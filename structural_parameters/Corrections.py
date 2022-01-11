@@ -1,6 +1,7 @@
 import numpy as np
 from .Profile_Functions import Isophotal_Radius
 from scipy.optimize import minimize
+import matplotlib.pyplot as plt
 
 def Apply_Cosmological_Dimming(G):
 
@@ -25,10 +26,10 @@ def Apply_Profile_Truncation(G):
     for b in G["SB"]:
         CHOOSE = np.logical_and(G["SB"][b]["sb"] < 90, G["SB"][b]["sb E"] < 0.3)
         truncR = G["SB"][b]["R"][-1] * 1.01
-        Rstart = Isophotal_Radius(G["SB"][b]["R"][CHOOSE], G["SB"][b]["sb"][CHOOSE], G["SB"][b]["sb"][CHOOSE][0] + 2.5)[0]
+        Rstart = Isophotal_Radius(G["SB"][b]["R"][CHOOSE], G["SB"][b]["sb"][CHOOSE], G["SB"][b]["sb"][CHOOSE][0] + 5)[0]
 
         def linear_floor(x, R, SB):
-            return np.mean((SB - np.clip(x[0]*R + x[1],a_min = None, a_max = x[2]))**2)
+            return np.mean(np.abs(SB - np.clip(x[0]*R + x[1],a_min = None, a_max = x[2])))
 
         outer_CHOOSE = np.logical_and(CHOOSE, G["SB"][b]["R"] > Rstart)
         x0 = list(np.polyfit(G["SB"][b]["R"][outer_CHOOSE], G["SB"][b]["sb"][outer_CHOOSE], 1))+[28]
@@ -39,8 +40,8 @@ def Apply_Profile_Truncation(G):
             for i in range(np.argmin(np.abs(G["SB"][b]["R"] - Rstart)), len(G["SB"][b]["R"])):
                 if G["SB"][b]["sb"][i] > 90:
                     truncR = G["SB"][b]["R"][i]
-            
         CHOOSE[G["SB"][b]["R"] > truncR] = False
+        
         G["SB"][b]["R"] = G["SB"][b]["R"][CHOOSE]
         G["SB"][b]["sb"] = G["SB"][b]["sb"][CHOOSE]
         G["SB"][b]["sb E"] = G["SB"][b]["sb E"][CHOOSE]

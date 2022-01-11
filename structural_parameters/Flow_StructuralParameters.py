@@ -22,6 +22,11 @@ from .Corrections import (
     Apply_Extinction_Correction,
     Apply_Profile_Truncation,
 )
+from .Diagnostic_Plots import (
+    Plot_Photometry,
+    Plot_Radii,
+    Plot_Velocity,
+)
 from functools import partial
 import numpy as np
 sys.path.append(os.environ["PROGRAMMING"])
@@ -45,6 +50,7 @@ Photometry_Corrections.add_process_node(
 Photometry_Corrections.add_process_node("profile truncation", Apply_Profile_Truncation)
 Photometry_Corrections.linear_mode(False)
 Structural_Parameters.add_node(Photometry_Corrections)
+Structural_Parameters.add_process_node('plot photometry', Plot_Photometry)
 
 # Individual Structural Parameters
 ######################################################################
@@ -64,6 +70,7 @@ for er in eval_radii:
         )
 Apparent_Radius.linear_mode(False)
 Structural_Parameters.add_node(Apparent_Radius)
+Structural_Parameters.add_process_node('plot radii', Plot_Radii)
 
 # Physical Radius
 Physical_Radius = flow.Chart("physical radius")
@@ -104,6 +111,7 @@ Structural_Parameters.add_node(Inclination)
 # Fit Velocity
 Structural_Parameters.add_process_node('fit C97 model', Calc_C97_Velocity_Fit)
 Structural_Parameters.add_process_node('fit Tan model', Calc_Tan_Velocity_Fit)
+Structural_Parameters.add_process_node('plot velocity', Plot_Velocity)
 
 # Velocity
 Velocity = flow.Chart("velocity")

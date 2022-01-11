@@ -5,6 +5,11 @@ import matplotlib.pyplot as plt
 
 def Apply_Cosmological_Dimming(G):
 
+    if not "zhel" in G:
+        if "warnings" in G:
+            G['warnings'].append(f"zhel not in {G['name']}, no cosmological diming correction applied")
+        return G
+    
     G["cosmological dimming corr"] = -2.5 * np.log10((1 + G["zhel"]) ** 3)
 
     for b in G["SB"]:
@@ -16,6 +21,10 @@ def Apply_Cosmological_Dimming(G):
 def Apply_Extinction_Correction(G):
 
     for b in G["SB"]:
+        if not "extinction" in G:
+            if "warnings" in G:
+                G['warnings'].append(f"extinction not in {G['name']} for {b}-band, no extinction correction applied")
+            continue
         G["SB"][b]["sb"] -= G["SB"][b]["extinction"]
 
     return G
@@ -57,3 +66,29 @@ def Apply_Profile_Truncation(G):
             pass
 
     return G
+
+def Apply_Redshift_Velocity_Correction(G):
+
+    if not "zhel" in G:
+        if "warnings" in G:
+            G['warnings'].append(f"zhel not in {G['name']}, no redshift velocity correction applied")
+        return G
+    redshift_corr = (1 + G['zhel'])
+
+    G['RC']['v'] /= redshift_corr
+    G['RC']['v E'] /= redshift_corr
+
+    return G
+    
+def Decide_Bypass(self, G, check_key):
+    """
+    Descision node used to bypass the main pipeline thread if a data key is missing from the dictionary.
+    
+    """
+    if check_key in G:
+        return self.forward.name
+    else:
+        op = list(self.options.keys())
+        op.pop(op.index(self.forward.name))
+        return op[0]
+        

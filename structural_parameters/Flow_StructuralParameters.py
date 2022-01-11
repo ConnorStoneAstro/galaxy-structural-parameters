@@ -21,6 +21,8 @@ from .Corrections import (
     Apply_Cosmological_Dimming,
     Apply_Extinction_Correction,
     Apply_Profile_Truncation,
+    Apply_Redshift_Velocity_Correction,
+    Decide_Bypass,
 )
 from .Diagnostic_Plots import (
     Plot_Photometry,
@@ -47,7 +49,9 @@ Photometry_Corrections.add_process_node(
 Photometry_Corrections.add_process_node(
     "extinction correction", Apply_Extinction_Correction
 )
-Photometry_Corrections.add_process_node("profile truncation", Apply_Profile_Truncation)
+Photometry_Corrections.add_process_node(
+    "profile truncation", Apply_Profile_Truncation
+)
 Photometry_Corrections.linear_mode(False)
 Structural_Parameters.add_node(Photometry_Corrections)
 Structural_Parameters.add_process_node('plot photometry', Plot_Photometry)
@@ -72,18 +76,6 @@ Apparent_Radius.linear_mode(False)
 Structural_Parameters.add_node(Apparent_Radius)
 Structural_Parameters.add_process_node('plot radii', Plot_Radii)
 
-# Physical Radius
-Physical_Radius = flow.Chart("physical radius")
-Physical_Radius.linear_mode(True)
-for er in eval_radii:
-    for eb in eval_bands:
-        Physical_Radius.add_process_node(
-            f"physical radius:{er}:{eb}",
-            partial(Calc_Physical_Radius, eval_at_R=er, eval_at_band=eb),
-        )
-Physical_Radius.linear_mode(False)
-Structural_Parameters.add_node(Physical_Radius)
-
 # Axis Ratio
 Axis_Ratio = flow.Chart("axis ratio")
 Axis_Ratio.linear_mode(True)
@@ -107,22 +99,6 @@ for er in eval_radii:
         )
 Inclination.linear_mode(False)
 Structural_Parameters.add_node(Inclination)
-
-# Fit Velocity
-Structural_Parameters.add_process_node('fit C97 model', Calc_C97_Velocity_Fit)
-Structural_Parameters.add_process_node('fit Tan model', Calc_Tan_Velocity_Fit)
-Structural_Parameters.add_process_node('plot velocity', Plot_Velocity)
-
-# Velocity
-Velocity = flow.Chart("velocity")
-Velocity.linear_mode(True)
-for er in eval_radii:
-    for eb in eval_bands:
-        Velocity.add_process_node(
-            f"velocity:{er}:{eb}", partial(Calc_Velocity, eval_at_R=er, eval_at_band=eb)
-        )
-Velocity.linear_mode(False)
-Structural_Parameters.add_node(Velocity)
 
 # Concentration
 Concentration = flow.Chart("concentration")
@@ -149,30 +125,6 @@ for er in eval_radii + ["Rinf"]:
         )
 Apparent_Magnitude.linear_mode(False)
 Structural_Parameters.add_node(Apparent_Magnitude)
-
-# Absolute Magnitude
-Absolute_Magnitude = flow.Chart("absolute magnitude")
-Absolute_Magnitude.linear_mode(True)
-for er in eval_radii + ["Rinf"]:
-    for eb in eval_bands:
-        Absolute_Magnitude.add_process_node(
-            f"absolute magnitude:{er}:{eb}",
-            partial(Calc_Absolute_Magnitude, eval_at_R=er, eval_at_band=eb),
-        )
-Absolute_Magnitude.linear_mode(False)
-Structural_Parameters.add_node(Absolute_Magnitude)
-
-# Luminosity
-Luminosity = flow.Chart("luminosity")
-Luminosity.linear_mode(True)
-for er in eval_radii + ["Rinf"]:
-    for eb in eval_bands:
-        Luminosity.add_process_node(
-            f"luminosity:{er}:{eb}",
-            partial(Calc_Luminosity, eval_at_R=er, eval_at_band=eb),
-        )
-Luminosity.linear_mode(False)
-Structural_Parameters.add_node(Luminosity)
 
 # Colour
 Colour = flow.Chart("colour")
@@ -223,7 +175,92 @@ for eb in eval_bands:
 Sersic_Params.linear_mode(False)
 Structural_Parameters.add_node(Sersic_Params)
 
+# Distance Dependent Quantities
+######################################################################
+
+# Physical Radius
+Physical_Radius = flow.Chart("physical radius")
+Physical_Radius.linear_mode(True)
+for er in eval_radii:
+    for eb in eval_bands:
+        Physical_Radius.add_process_node(
+            f"physical radius:{er}:{eb}",
+            partial(Calc_Physical_Radius, eval_at_R=er, eval_at_band=eb),
+        )
+Physical_Radius.linear_mode(False)
+Structural_Parameters.add_node(Physical_Radius)
+
+# Absolute Magnitude
+Absolute_Magnitude = flow.Chart("absolute magnitude")
+Absolute_Magnitude.linear_mode(True)
+for er in eval_radii + ["Rinf"]:
+    for eb in eval_bands:
+        Absolute_Magnitude.add_process_node(
+            f"absolute magnitude:{er}:{eb}",
+            partial(Calc_Absolute_Magnitude, eval_at_R=er, eval_at_band=eb),
+        )
+Absolute_Magnitude.linear_mode(False)
+Structural_Parameters.add_node(Absolute_Magnitude)
+
+# Luminosity
+Luminosity = flow.Chart("luminosity")
+Luminosity.linear_mode(True)
+for er in eval_radii + ["Rinf"]:
+    for eb in eval_bands:
+        Luminosity.add_process_node(
+            f"luminosity:{er}:{eb}",
+            partial(Calc_Luminosity, eval_at_R=er, eval_at_band=eb),
+        )
+Luminosity.linear_mode(False)
+Structural_Parameters.add_node(Luminosity)
+
+# Velocity Dependent Quantities
+######################################################################
+
+# Apply corrections to Velocity
+Velocity_Corrections = flow.Chart("velocity corrections")
+Velocity_Corrections.linear_mode(True)
+Velocity_Corrections.add_process_node(
+    "redshift velocity corr", Apply_Redshift_Velocity_Correction
+)
+Velocity_Corrections.linear_mode(False)
+Structural_Parameters.add_node(Velocity_Corrections)
+
+# Fit Velocity
+Velocity_Fit = flow.Chart("velocity fits")
+Velocity_Fit.linear_mode(True)
+Velocity_Fit.add_process_node('fit C97 model', Calc_C97_Velocity_Fit)
+Velocity_Fit.add_process_node('fit Tan model', Calc_Tan_Velocity_Fit)
+Velocity_Fit.linear_mode(False)
+Structural_Parameters.add_node(Velocity_Fit)
+Structural_Parameters.add_process_node('plot velocity', Plot_Velocity)
+
+# Velocity
+Velocity = flow.Chart("velocity")
+Velocity.linear_mode(True)
+for er in eval_radii:
+    for eb in eval_bands:
+        Velocity.add_process_node(
+            f"velocity:{er}:{eb}", partial(Calc_Velocity, eval_at_R=er, eval_at_band=eb)
+        )
+Velocity.linear_mode(False)
+Structural_Parameters.add_node(Velocity)
+
 # Close flowchart construction
+######################################################################
 Structural_Parameters.linear_mode(False)
+
+# Pipeline Decisions
+######################################################################
+# velocity bypass
+Structural_Parameters.add_decision_node('bypass velocity', partial(Decide_Bypass, check_key = "RC"))
+Structural_Parameters.insert_node('bypass velocity', "velocity corrections")
+Structural_Parameters.link_nodes('bypass velocity', Velocity.forward.name)
+
+# Absolute quantities bypass
+Structural_Parameters.add_decision_node('bypass distance dependent', partial(Decide_Bypass, check_key = "D"))
+Structural_Parameters.insert_node('bypass distance dependent', "physical radius")
+Structural_Parameters.link_nodes('bypass distance dependent', Luminosity.forward.name)
+
 ######################################################################
 # Structural_Parameters.draw("plots/Structural_Parameters_Flowchart.png")

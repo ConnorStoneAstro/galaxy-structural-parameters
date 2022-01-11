@@ -31,6 +31,6 @@ for b in Test_Galaxy['SB']:
     Test_Galaxy['SB'][b]['q'] = np.array(1 - T['ellip'])
     Test_Galaxy['SB'][b]['q E'] = np.array(T['ellip_e'])
     
-
+Structural_Parameters.draw('pipeline.png')
 with open('galaxy_parameters.txt', 'w') as f:
     f.write(str(Structural_Parameters(Test_Galaxy)))

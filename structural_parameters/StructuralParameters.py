@@ -198,9 +198,8 @@ def Calc_Velocity(G, eval_at_R="Ri23.5", eval_at_band="r", eval_with_model = 'C9
     Vobs = model(
         x[:-2] + [0, 0], G["appR"][f"{eval_at_R}:{eval_at_band}"]
     )
-    Vcorr = abs(Vobs) / (
-        np.sin(G["i"][f"{eval_at_R}:{eval_at_band}"]) * (1 + (G["D"] * H0 * 1e-6 / c))
-    )
+    incl_corr = np.sin(G["i"][f"{eval_at_R}:{eval_at_band}"])
+    Vcorr = abs(Vobs) / incl_corr
     Vcorr_E = G["RC"]["v E"][
         np.argmin(
             np.abs(np.abs(G["RC"]["R"]) - G["appR"][f"{eval_at_R}:{eval_at_band}"])

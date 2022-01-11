@@ -211,7 +211,6 @@ def Isophotal_Radius(R, SB, mu_iso, E = None):
 
     CHOOSE = np.logical_and(SB > (mu_iso - 3.), SB < (mu_iso + 3.))
     if np.sum(CHOOSE) < 3:
-        print('no SB in range 21.5 to 25.5???', R, list(SB), mu_iso)
         CHOOSE = list(True for c in CHOOSE)
     p = np.polyfit(R[CHOOSE], SB[CHOOSE], 1)
     if p[0] < 0:

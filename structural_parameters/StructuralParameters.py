@@ -9,7 +9,7 @@ dependent on other calculations preceeding them, this is noted in
 their documentation.
 """
 
-from Supporting_Functions import (
+from .Supporting_Functions import (
     app_mag_to_abs_mag,
     mag_to_L,
     L_to_mag,
@@ -25,7 +25,7 @@ from Supporting_Functions import (
     inclination,
 )
 
-from Profile_Functions import (
+from .Profile_Functions import (
     Evaluate_Magnitude,
     Isophotal_Radius,
     Evaluate_Surface_Brightness,
@@ -37,7 +37,7 @@ from Profile_Functions import (
     Tan_Model_Fit,
 )    
 
-from K_correction import calc_kcor
+from .K_correction import calc_kcor
 from scipy.integrate import quad, trapz
 import matplotlib.pyplot as plt
 import logging

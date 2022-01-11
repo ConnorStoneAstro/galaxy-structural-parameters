@@ -1,6 +1,6 @@
 import sys
 import os
-from StructuralParameters import (
+from .StructuralParameters import (
     Calc_Apparent_Radius,
     Calc_Physical_Radius,
     Calc_Axis_Ratio,
@@ -17,7 +17,7 @@ from StructuralParameters import (
     Calc_Sersic_Params,
     Calc_Concentration,
 )
-from Corrections import (
+from .Corrections import (
     Apply_Cosmological_Dimming,
     Apply_Extinction_Correction,
     Apply_Profile_Truncation,
@@ -29,7 +29,7 @@ from FlowChart import flow
 
 # Structural Parameters Flowchart
 ######################################################################
-Structural_Parameters = flow.Chart("structural parameters")
+Structural_Parameters = flow.Chart("structural parameters", logfile = 'structural_parameters.log')
 Structural_Parameters.linear_mode(True)
 
 # Apply corrections to photometry

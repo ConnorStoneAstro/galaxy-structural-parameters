@@ -209,10 +209,13 @@ def Isophotal_Radius(R, SB, mu_iso, E = None):
         else:
             return '-', '-', '-'
 
-    CHOOSE = np.logical_and(SB > (mu_iso - 3.), SB < (mu_iso + 3.))
-    if np.sum(CHOOSE) < 3:
-        CHOOSE = list(True for c in CHOOSE)
-    p = np.polyfit(R[CHOOSE], SB[CHOOSE], 1)
+    # select 5 points closest to the right SB
+    N = np.argsort(np.abs(SB - mu_iso))[:5]
+    N = N[np.argsort(R[N])]
+    # CHOOSE = np.logical_and(SB > (mu_iso - 3.), SB < (mu_iso + 3.))
+    # if np.sum(CHOOSE) < 3:
+    #     CHOOSE = list(True for c in CHOOSE)
+    p = np.polyfit(R[N], SB[N], 1)
     if p[0] < 0:
         print('Odd, negative slope for SB prof linear fit')
         p = np.polyfit(R, SB, 1)
@@ -287,11 +290,6 @@ def fluxintegrate(I, ellip, args, R = np.inf):
 
 def bulgediskfit(prof, ellip):
 
-    CHOOSE = np.logical_and(prof['SB_e'] <= 0.2, prof['SB'] < 25)
-
-    for h in prof.keys():
-        prof[h] = prof[h][CHOOSE]
-
     disksb = np.polyfit(prof['R'][prof['R'] > (prof['R'][-1]/2)],
                         prof['SB'][prof['R'] > (prof['R'][-1]/2)], deg = 1)
     if disksb[0] < 0:
@@ -308,11 +306,6 @@ def bulgediskfit(prof, ellip):
             'sersic1 Ie': bulgediskf.x[3], 'sersic1 M': I_to_SB(fluxintegrate(sersic, ellip, (bulgediskf.x[2], bulgediskf.x[3], bulgediskf.x[4]))), 'sersic1 n': bulgediskf.x[4]}
 
 def diskbulgefit(prof, ellip):
-    CHOOSE = np.logical_and(prof['SB_e'] <= 0.2, prof['SB'] < 25)
-
-    for h in prof.keys():
-        prof[h] = prof[h][CHOOSE]
-
     disksb = np.polyfit(prof['R'][prof['R'] < (prof['R'][-1]/4)],
                         prof['SB'][prof['R'] < (prof['R'][-1]/4)], deg = 1)
     if disksb[0] < 0:
@@ -329,11 +322,6 @@ def diskbulgefit(prof, ellip):
             'sersic1 Ie': bulgediskf.x[3], 'sersic1 M': I_to_SB(fluxintegrate(sersic, ellip, (bulgediskf.x[2], bulgediskf.x[3], bulgediskf.x[4]))), 'sersic1 n': bulgediskf.x[4]}
 
 def bulgebulgefit(prof, ellip):
-    CHOOSE = np.logical_and(prof['SB_e'] <= 0.2, prof['SB'] < 25)
-
-    for h in prof.keys():
-        prof[h] = prof[h][CHOOSE]
-
     init_bulgedisk = bulgediskfit(prof, ellip)
     b1 = 1.9992 - 0.3271
     bulgebulgef = minimize(_fitbulgebulge, x0 = [init_bulgedisk['sersic1 Re'], init_bulgedisk['sersic1 Ie'], init_bulgedisk['sersic1 n'],
@@ -345,11 +333,6 @@ def bulgebulgefit(prof, ellip):
 
 
 def diskfit(prof, ellip):
-    
-    CHOOSE = np.logical_and(prof['SB_e'] <= 0.2, prof['SB'] < 25)
-
-    for h in prof.keys():
-        prof[h] = prof[h][CHOOSE]
 
     disksb = np.polyfit(prof['R'], prof['SB'], deg = 1)
     diskf = [2.5/(np.log(10)*disksb[0]), 10**((22.5 - disksb[1])/2.5)]
@@ -357,10 +340,6 @@ def diskfit(prof, ellip):
     return {'disk Rs': diskf[0], 'disk M': I_to_SB(fluxintegrate(disk, ellip, (diskf[0], diskf[1]))), 'disk I0': diskf[1]}
 
 def bulgefit(prof, ellip):
-    CHOOSE = np.logical_and(prof['SB_e'] <= 0.2, prof['SB'] < 25)
-
-    for h in prof.keys():
-        prof[h] = prof[h][CHOOSE]
     disksb = np.polyfit(prof['R'], prof['SB'], deg = 1)
     diskf = [2.5/(np.log(10)*disksb[0]), 10**((22.5 - disksb[1])/2.5)]
     b1 = 1.9992 - 0.3271
@@ -449,6 +428,86 @@ def Tan_Model_Fit(R, V, E = None, fixed_origin = False, n_walkers = 10):
     res = []
     for i in range(n_walkers):
         res.append(minimize(Tan_Model_Loss,
+                            x0 = x0s[i],
+                            args = (R, V, E, fixed_origin)))
+    return list(min(res, key = lambda x: x.fun if np.isfinite(x.fun) else np.inf).x) + ([0.,0.] if fixed_origin else []) #, x0s[0] + ([0.,0.] if fixed_origin else []))
+
+#---------------------------------------------------------------------
+def Tanh_Model_Evaluate(x, R):
+    """
+    Evaluate a tanh model for a rotation curve. This simple model
+    is a good first step when trying to fit a rotation curve, but
+    is unable to reflect the rull range of observed rotation curves.
+    x: 0 - r_t, the transition radius from rising to flat
+       1 - v_c, asymptotic velocity
+       2 - v0, the y-axis offset for the zero of the rotation curve
+       3 - x0, the x-axis offset for the center of the galaxy
+    R: Radius at which we would like the model velocity [any units]
+
+    returns: Velocity for tanh model at R [units specified by x]
+    """
+    y = (R - x[3]) / x[0]
+    return x[2] + x[1] * np.tanh(y)
+
+def Tanh_Model_Loss(x, R, V, E, fixed_origin = False):
+    """
+    Function that evaluates the difference between a model and
+    measured rotation curve. Used only for fitting purposes by
+    Tanh_Model_Fit
+    x: 0 - r_t, the transition radius from rising to flat
+       1 - v_c, asymptotic velocity
+       2 - v0, the y-axis offset for the zero of the rotation curve
+       3 - x0, the x-axis offset for the center of the galaxy
+    R: Radius at which we would like the model velocity [any length units]
+    V: Measured velocity values [any speed units]
+    E: uncertainty on velocity measurements
+    fixed_origin: boolean to indicate if model has origin at (0,0)
+                  or is allowed to float [boolean]
+    
+    returns: scalar value to minimize for optimal fit [unitless]
+    """
+    V_model = Tanh_Model_Evaluate((list(x) + [0.,0.]) if fixed_origin else x, R)
+    CHOOSE = np.isfinite(V_model)
+    if np.sum(CHOOSE) <= 0:
+        return 1e9 * len(R)    
+    losses = ((V - V_model)/E)[CHOOSE]
+    N = np.argsort(losses)
+    return np.mean(losses[N][int(0.1*len(losses)):int(0.9*len(losses))]**2) + ((0. if fixed_origin else ((x[3]/20)**2)))
+
+def Tanh_Model_Fit(R, V, E = None, fixed_origin = False, n_walkers = 10):
+    """
+    Fits a tanh model to a rotation curve. This simple model
+    is a good first step when trying to fit a rotation curve, but
+    is unable to reflect the rull range of observed rotation curves.
+    R: Radius at which we would like the model velocity [any length units]
+    V: Measured velocity values [any speed units]
+    E: uncertainty on velocity measurements
+    fixed_origin: boolean to indicate if model has origin at (0,0)
+                  or is allowed to float [boolean]
+
+    returns: tuple with parameters for the tanh model as described
+             in Tanh_Model_Evaluate [various units]
+    """
+    
+    if E is None:
+        E = np.ones(len(R))
+    else:
+        E = np.clip(E, a_min = 3, a_max = None)
+    N = np.argsort(V)
+    sign = np.sign(np.sum(R*(V-np.median(V))))
+    x0s = [[(max(R)-min(R))/15.,
+            V[N[-2]] if np.all(R >= 0) else sign*iqr(V, rng = [10, 90])/2.]]
+    if not fixed_origin:
+        x0s[0] += [(V[N[1]] + V[N[-2]])/2., 0.]
+    for i in range(n_walkers - 1):
+        x0s.append([x0s[0][0] * 2**(np.random.normal()),
+                    x0s[0][1] * 1.2**(np.random.normal())])
+        if not fixed_origin:
+            x0s[-1] += [x0s[0][2] + np.random.normal(scale = iqr(V, rng = [20,80]) / 10.),
+                        x0s[0][3] + np.random.normal(scale = iqr(R, rng = [20,80]) / 10.)]
+    res = []
+    for i in range(n_walkers):
+        res.append(minimize(Tanh_Model_Loss,
                             x0 = x0s[i],
                             args = (R, V, E, fixed_origin)))
     return list(min(res, key = lambda x: x.fun if np.isfinite(x.fun) else np.inf).x) + ([0.,0.] if fixed_origin else []) #, x0s[0] + ([0.,0.] if fixed_origin else []))

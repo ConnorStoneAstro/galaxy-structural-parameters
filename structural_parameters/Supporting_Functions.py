@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.integrate import trapz, quad
 
 Grav_C      = 4.302e3            # pc M_sun^-1 (m s^-1)^2
 H0          = 70.4               # km s^-1 Mpc^-1
@@ -11,11 +12,14 @@ D_sun       = 1.58e-5 * Ly_to_Pc # pc
 c           = 299792.458         # km s^-1
 
 # mips.as.arizona.edu/~cnaw/sun.html
+# AB magnitude system
 # also see: http://www.astronomy.ohio-state.edu/~martini/usefuldata.html
-Abs_Mag_Sun = {'u': 6.39,
-               'g': 5.11,
-               'r': 4.65,
-               'i': 4.53,
+Abs_Mag_Sun = {'f': 17.30,
+               'n': 10.16,
+               'u': 6.39,
+               'g': 5.05,
+               'r': 4.61,
+               'i': 4.52,
                'z': 4.50,
                'U': 6.33,
                'B': 5.31,
@@ -25,6 +29,10 @@ Abs_Mag_Sun = {'u': 6.39,
                'J': 4.54,
                'H': 4.66,
                'K': 5.08,
+               'w1': 5.92,
+               'w2': 6.58,
+               'w3': 8.48,
+               'w4': 9.88,
                '3.6um': 3.24}
 
 # http://www.sdss.org/dr12/algorithms/magnitudes/
@@ -484,25 +492,25 @@ def COG_to_SBprof(R, COG, band):
 
     return ISB_to_muSB(np.array(ISB), band = band)
 
-def vcmb_to_z(vcmb):
+def v_to_z(v):
     """
     computes the redshift using the cmb velocity which is purely in the radial direction
 
-    vcmb: the velocity of an object along the line of sight (km s^-1)
+    v: the velocity of an object along the line of sight (km s^-1)
 
     returns: z the redshift (unitless)
     """
 
     # https://en.wikipedia.org/wiki/Redshift#Redshift_formulae
-    return np.sqrt((1. + (vcmb / c)) / (1. - (vcmb / c))) - 1.
+    return np.sqrt((1. + (v / c)) / (1. - (v / c))) - 1.
 
-def z_to_vcmb(z):
+def z_to_v(z):
     """
     computes the the cmb velocity which is purely in the radial direction from redshift
 
     z: redshift (unitless)
 
-    returns: vcmb the velocity of an object along the line of sight (km s^-1)
+    returns: v the velocity of an object along the line of sight (km s^-1)
     """
 
     # https://en.wikipedia.org/wiki/Redshift#Redshift_formulae
@@ -599,6 +607,10 @@ def Get_M2L(colour, colour_type, M2L_colour, table = 'Roediger_BC03', sim = Fals
 
     returns exp(a + b * colour)
     """
+
+    Cluver_2014 = {'header': ['bw1', 'aw1'],
+                   'w1-w2': [-2.54, -0.17]}
+    
     Roediger_BC03 = {'header': ['bg', 'ag', 'br', 'ar', 'bi', 'ai', 'bz', 'az', 'bH', 'aH'],
                      'g-r': [2.029, -0.984, 1.629, -0.792, 1.438, -0.771, 1.306, -0.796, 0.980, -0.920], 
                      'g-i': [1.379, -1.067, 1.110, -0.861, 0.979, -0.831, 0.886, -0.848, 0.656, -0.950], 
@@ -622,7 +634,6 @@ def Get_M2L(colour, colour_type, M2L_colour, table = 'Roediger_BC03', sim = Fals
                      'i-z': [3.709, -0.550, 2.933, -0.443, 2.484, -0.419, 2.084, -0.411, 1.112, -0.457], 
                      'i-H': [1.073, -0.460, 0.852, -0.375, 0.722, -0.362, 0.608, -0.365, 0.322, -0.430], 
                      'z-H': [1.493, -0.414, 1.188, -0.339, 1.008, -0.333, 0.849, -0.341, 0.449, -0.417]} 
-    
     
     
     Zhang_BC03_40LGDwarf = {'header': ['aB','bB','ag','bg','aV','bV','ar','br','aR','bR','ai','bi','aI','bI','az','bz'],
@@ -666,6 +677,8 @@ def Get_M2L(colour, colour_type, M2L_colour, table = 'Roediger_BC03', sim = Fals
     
     if M2L_colour == '3.6um':
         return np.ones(len(colour))*0.5 
+    if colour_type == 'w1':
+        return np.ones(len(colour))*0.5 
     if colour_type == 'N-A':
         return colour
     if table == 'Zhang_BC03_40LGDwarf':
@@ -684,7 +697,12 @@ def Get_M2L(colour, colour_type, M2L_colour, table = 'Roediger_BC03', sim = Fals
         if np.any(list((c in colour_type) for c in 'BVRI')) or np.any(list((c in M2L_colour) for c in 'BVRI')):
             print('switching colour tables')
             T = Zhang_BC03_FullSampleAvar
-    
+    elif table == 'Cluver_2014':
+        T = Cluver_2014
+        colour = np.clip(colour, a_min = -0.05, a_max = 0.2)
+    else:
+        raise ValueError('unrecognized table: ', table)
+            
     a = None
     b = None
     for i in range(len(T['header'])):
@@ -695,10 +713,33 @@ def Get_M2L(colour, colour_type, M2L_colour, table = 'Roediger_BC03', sim = Fals
         if (not a is None) and (not b is None):
             break
     else:
-        raise ValueError('Colour could not be found in table')
+        raise ValueError(f'Colour could not be found in table: {M2L_colour}, {colour_type}')
 
     if not colour_err is None:
         return 10**(a + b * colour), abs(b * 10**(a + b * colour) * np.log(10) * colour_err)
     else:
         return 10**(a + b * colour)
+
+
+# SB prof integrator
+######################################################################
+
+
+def fluxdens_to_fluxsum(R, I, axisratio):
+    """
+    Integrate a flux density profile
+
+    R: semi-major axis length (arcsec)
+    I: flux density (flux/arcsec^2)
+    axisratio: b/a profile
+    """
+
+    S = np.zeros(len(R))
+    S[0] = I[0] * np.pi * axisratio[0] * (R[0] ** 2)
+    for i in range(1, len(R)):
+        S[i] = (
+            trapz(2 * np.pi * I[: i + 1] * R[: i + 1] * axisratio[: i + 1], R[: i + 1])
+            + S[0]
+        )
+    return S
 

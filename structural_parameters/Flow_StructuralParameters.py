@@ -18,7 +18,7 @@ from .Supporting_Functions import allradii
 from functools import partial
 from collections import defaultdict
 import numpy as np
-import flow
+from . import flow
 
 def to_defaultdict(G):
     if isinstance(G, defaultdict):

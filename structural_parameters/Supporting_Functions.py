@@ -35,6 +35,46 @@ Abs_Mag_Sun = {'f': 17.30,
                'w4': 9.88,
                '3.6um': 3.24}
 
+lambda_eff = {'f': 0.1549,
+              'n': 0.2304,
+              'u': 0.3881,
+              'g': 0.4776,
+              'r': 0.6374,
+              'i': 0.7758,
+              'z': 0.9139,
+              'U': 0.3694,
+              'B': 0.4390,
+              'V': 0.5476,
+              'R': 0.6492,
+              'I': 0.7993,
+              'J': 1.2321,
+              'H': 1.6424,
+              'K': 2.1558,
+              'w1': 3.3387,
+              'w2': 4.5870,
+              'w3': 11.3086,
+              'w4': 22.0230}
+
+jansky_zp = {'f': 531.97,
+             'n': 809.45,
+             'u': 2735.17,
+             'g': 4033.18,
+             'r': 3137.37,
+             'i': 2553.68,
+             'z': 2304.99,
+             'U': 1868.72,
+             'B': 4085.60,
+             'V': 3674.73,
+             'R': 3080.98,
+             'I': 2478.76,
+             'J': 1628.84,
+             'H': 1053.12,
+             'K': 683.04,
+             'w1': 314.69,
+             'w2': 175.16,
+             'w3': 29.79,
+             'w4': 8.30}
+
 # http://www.sdss.org/dr12/algorithms/magnitudes/
 asinh_softening = {'u': 1.4e-10,
                    'g': 9e-11,
@@ -125,7 +165,11 @@ def ConvertHubbleType(HT, HT_type = None):
         print('unidentified Hubble Type!: ' + HT)
         return 12
         
-            
+
+allradii = list(f"Ri{rr:g}" for rr in np.arange(22, 26.5, 0.5)) + list(
+    f"Rp{rr:g}" for rr in np.arange(20, 90, 10)
+) + list(f"Re{rr:g}" for rr in np.arange(1.5, 4.5, 0.5)) + ['RI']
+    
 def mag_to_L(mag, band, mage = None, zeropoint = None):
     """
     Returns the luminosity (in solar luminosities) given the absolute magnitude and reference point.
@@ -481,7 +525,6 @@ def COG_to_SBprof(R, COG, band):
 
     assert np.all(COG[:-1] - COG[1:] > 0)
     assert len(R) == len(COG)
-    print( R, COG)
     ISB = [mag_to_L(COG[0], band = band) / (np.pi * R[0]**2)]
     for i in range(1,len(R)):
         ISB.append((mag_to_L(COG[i], band = band) - mag_to_L(COG[i-1], band = band)) / (np.pi * (R[i]**2 - R[i-1]**2)))

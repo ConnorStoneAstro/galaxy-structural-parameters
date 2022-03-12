@@ -526,9 +526,12 @@ def Courteau97_Model_Evaluate(x, R, prof = None):
 
     returns: Velocity for Courteau97 model at R [units specified by x]
     """
-    sign = np.sign(R-x[5])
-    y = np.abs(x[0] / (R - x[5]))
-    V = x[4] + sign * x[1] * ((1. + y)**x[2]) / ((1. + y**x[3])**(1./x[3]))
+    xx = R-x[5]
+    sign = np.sign(xx)
+    y = np.abs(x[0] / xx)
+    num = ((1. + y)**x[2])
+    denom = ((1. + y**x[3])**(1./x[3]))
+    V = x[4] + sign * x[1] * num / denom
     if prof is None:
         return V
     else:

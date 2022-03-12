@@ -27,14 +27,14 @@ def Apply_Cosmological_Dimming(G):
 @catch_errors
 def Apply_Extinction_Correction(G, eval_in_band = None):
 
-    if not "extinction" in G['photometry'][eval_in_band]:
+    if not "extinction" in G or not eval_in_band in G["extinction"]:
         if "warnings" in G:
             G["warnings"].append(
                 f"extinction not in {G['name']} for {eval_in_band}-band, no extinction correction applied"
             )
     else:
-        G["photometry"][eval_in_band]["SB"] -= G["photometry"][eval_in_band]["extinction"]
-        G["photometry"][eval_in_band]["totmag"] -= G["photometry"][eval_in_band]["extinction"]
+        G["photometry"][eval_in_band]["SB"] -= G["extinction"][eval_in_band]
+        G["photometry"][eval_in_band]["totmag"] -= G["extinction"][eval_in_band]
 
     return G
 
@@ -105,9 +105,10 @@ def Apply_K_Correction(G, eval_in_band = None):
 @catch_errors
 def Apply_Profile_Truncation(G, eval_in_band):
 
-    lim = 0.3
     if eval_in_band in ['f', 'n', 'w1', 'w2']:
         lim = 0.5
+    elif eval_in_band in ['g', 'r', 'z']:
+        lim = 0.3
     else:
         lim = 1.
     CHOOSE = np.logical_and(G["photometry"][eval_in_band]["SB"] < 90, G["photometry"][eval_in_band]["SB_e"] < lim)
@@ -159,7 +160,8 @@ def Apply_Profile_Truncation(G, eval_in_band):
             if G["photometry"][eval_in_band]["SB"][i] > 90:
                 truncR = G["photometry"][eval_in_band]["R"][i]
                 break
-    CHOOSE[G["photometry"][eval_in_band]["R"] > truncR] = False
+    if not eval_in_band in ['f', 'n']:
+        CHOOSE[G["photometry"][eval_in_band]["R"] > truncR] = False
     if np.sum(CHOOSE) < 5:
         if eval_in_band in ['f', 'n', 'w1', 'w2']:
             CHOOSE = np.logical_and(G["photometry"][eval_in_band]["SB"] < 26, G["photometry"][eval_in_band]["SB_e"] < 1)
@@ -170,8 +172,6 @@ def Apply_Profile_Truncation(G, eval_in_band):
         del G['photometry'][eval_in_band]
         raise KeyError(f'Low quality profile, cannot determine viable region for {eval_in_band}, kicking')
     for k in G["photometry"][eval_in_band]:
-        if k in ['extinction']:
-            continue
         G["photometry"][eval_in_band][k] = G["photometry"][eval_in_band][k][CHOOSE]
 
     return G
@@ -210,7 +210,7 @@ def Apply_Inclination_Correction(G, specification = None):
     return G
 
 
-def Fit_Inclination_Correction(Glist, fit_bands = ['g', 'r', 'z'], refband = 'w1', eval_after_R = None, eval_after_band = None):
+def Fit_Inclination_Correction(Glist, fit_bands = ['f', 'n', 'g', 'r', 'z'], refband = 'w1', eval_after_R = None, eval_after_band = None):
 
     spec = dict((b,{}) for b in fit_bands)
     for b in fit_bands:
@@ -218,7 +218,7 @@ def Fit_Inclination_Correction(Glist, fit_bands = ['g', 'r', 'z'], refband = 'w1
         all_col = []
         all_incl = []
         for G in Glist:
-            if G is None:
+            if G is None or b not in G['photometry']:
                 continue
             if not eval_after_R is None:
                 CHOOSE = G['photometry'][b]['R'] > G['appR'][f"{eval_after_R}:{eval_after_band}"]

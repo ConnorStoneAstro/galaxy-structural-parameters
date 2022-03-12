@@ -56,7 +56,7 @@ def Plot_Radii(G, eval_in_band = None):
         return G
     
     clist = list(mcolors.TABLEAU_COLORS.values())
-    appRs = list(filter(lambda k: 'E|' not in k, G['appR'].keys()))
+    appRs = list(filter(lambda k: 'E|' not in k and 'RI' not in k, G['appR'].keys()))
     colour = band_colors[eval_in_band] if eval_in_band in band_colors else None
     plt.errorbar(G['photometry'][eval_in_band]['R'], G['photometry'][eval_in_band]['SB'], yerr = G['photometry'][eval_in_band]['SB_e'], color = colour, markersize = 6, marker = '.', linewidth = 0, elinewidth = 1, label = f'SB {eval_in_band}')
     cindex = 0
@@ -79,8 +79,8 @@ def Plot_Radii(G, eval_in_band = None):
     colour = band_colors[eval_in_band] if eval_in_band in band_colors else None
     plt.scatter(G['photometry'][eval_in_band]['R'], G['photometry'][eval_in_band]['totmag'], label = f'mag {eval_in_band}', color = colour, s = 6)
     cindex = 0
-    for r in sorted(G['appR']):
-        if r[:2] != 'Rp' or r.split(':')[1] != eval_in_band or 'E|' in r:
+    for r in sorted(appRs):
+        if r[:2] != 'Rp' or r.split(':')[1] != eval_in_band:
             continue
         plt.axvline(G['appR'][r], label = 'R$_{%s}$' % r.split(':')[0][2:], color = clist[cindex % len(clist)])
         cindex += 1

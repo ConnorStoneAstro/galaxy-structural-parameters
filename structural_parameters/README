@@ -1,0 +1,51 @@
+Author: Connor Stone
+contact: connor.stone@queensu.ca
+
+This package computes structural parameters for galaxies in the PROBES
+compendium. It includes a pipeline builder to quickly process many
+galaxies. The basic framework represents every galaxy as a dictionary
+which stores the relevant information about the galaxy. Each module
+takes a galaxy dictionary as an argument and computes some structural
+parameter and its uncertainty; the computed values are then added to
+the dictionary. The structural parameters pipeline is just a system to
+pass galaxies through these functions in the right order, and also
+allow for simple parallelization.
+
+Flow_StructuralParameters.py
+------------------------------------------------------------
+Here you will find the pipeline builder which takes a set of arguments
+as to which radii and bands are needed and it builds a corresponding
+flowchart. This is the main intended interface for using the
+structural parameters code. However, users can create their own
+pipelines relatively easily from the StructuralParameters.py functions
+and other Supporting functions.
+
+Corrections.py
+------------------------------------------------------------
+Here you will find functions which apply corrections to the PROBES
+data, such as Galactic extinction and truncating the SB profiles.
+
+StructuralParameters.py
+------------------------------------------------------------
+Here you will find functions which compute individual structural
+parameters.
+
+Diagnostic_Plots.py
+------------------------------------------------------------
+This module contains functions which plot various aspects of the
+analysis, making it easier to spot problems with the calculations
+and/or determine which galaxies are causing trouble.
+
+Supporting_Functions.py
+------------------------------------------------------------
+Here there are a number of functions and objects which are used in
+performing the various structural parameter calculations. For example
+converting between flux and mag, Vhelio and Vcmb, and integrating SB
+profiles. These functions/objects are used by a variety of other
+modules in the package.
+
+Decorators.py
+------------------------------------------------------------
+A few decorators are used to keep the StructuralParameters.py code
+fairly clean. These are included here though likely users will not
+need to interact with them.

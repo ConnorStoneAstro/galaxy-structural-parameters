@@ -11,17 +11,6 @@ def catch_errors(func):
             return G
     return wrapper_catch_errors
 
-def prime_dict(*keys):
-    def decorate_prime_dict(func):
-        @functools.wraps(func)
-        def wrapper_prime_dict(G, *args, **kwargs):
-            for k in keys:
-                if not k in G:
-                    G[k] = {}
-            return func(G, *args, **kwargs)
-        return wrapper_prime_dict
-    return decorate_prime_dict
-
 def all_appR(func):
     @functools.wraps(func)
     def wrapper_all_appR(G, *args, eval_at_R=None, eval_at_band=None, **kwargs):

@@ -39,7 +39,7 @@ from .Profile_Functions import (
     Tanh_Model_Evaluate,
     Tanh_Model_Fit,
 )
-from .Decorators import catch_errors, prime_dict, all_appR, all_bands
+from .Decorators import catch_errors, all_appR, all_bands
 from .K_correction import calc_kcor
 from scipy.integrate import quad, trapz
 import matplotlib.pyplot as plt
@@ -48,14 +48,13 @@ import numpy as np
 
 
 @catch_errors
-@prime_dict("appR")
 def Calc_Apparent_Radius(G, eval_at_R="Ri23.5", eval_at_band="r"):
     """
     Compute the apparent radius for a given requested radius and band.
 
     references: None
     """
-    if eval_at_R == "Rinf":
+    if eval_at_R == "RI":
         Reval = [np.inf, 0.0]
     elif eval_at_R[:2] == "Ri":
         iso = float(eval_at_R[2:])
@@ -95,12 +94,10 @@ def Calc_Apparent_Radius(G, eval_at_R="Ri23.5", eval_at_band="r"):
 
     G["appR"][f"{eval_at_R}:{eval_at_band}"] = Reval[0]
     G["appR"][f"E|{eval_at_R}:{eval_at_band}"] = Reval[1]
-
     return G
 
 @all_appR
 @catch_errors
-@prime_dict("physR")
 def Calc_Physical_Radius(G, eval_at_R=None, eval_at_band=None):
     """
     Compute the physical radius for a given requested radius and band.
@@ -116,14 +113,16 @@ def Calc_Physical_Radius(G, eval_at_R=None, eval_at_band=None):
     )
 
     G["physR"][f"{eval_at_R}:{eval_at_band}"] = Rphys[0] / 1e3
-    G["physR"][f"E|{eval_at_R}:{eval_at_band}"] = Rphys[1] / 1e3
+    if eval_at_R == 'RI':
+        G["physR"][f"E|{eval_at_R}:{eval_at_band}"] = 0.
+    else:
+        G["physR"][f"E|{eval_at_R}:{eval_at_band}"] = Rphys[1] / 1e3
 
     return G
 
 
 @all_appR
 @catch_errors
-@prime_dict("q")
 def Calc_Axis_Ratio(G, eval_in_band="r", eval_at_R=None, eval_at_band=None):
     """
     Interpolate the isophote axis ratio at a requested radius and band.
@@ -141,7 +140,6 @@ def Calc_Axis_Ratio(G, eval_in_band="r", eval_at_R=None, eval_at_band=None):
         )
     else:
         q = np.median(1 - G["photometry"][eval_in_band]["ellip"][-5:])
-
     G["q"][f"{eval_at_R}:{eval_at_band}"] = q
     G["q"][f"E|{eval_at_R}:{eval_at_band}"] = max(
         0.05,
@@ -151,7 +149,6 @@ def Calc_Axis_Ratio(G, eval_in_band="r", eval_at_R=None, eval_at_band=None):
     return G
 
 @catch_errors
-@prime_dict("inclination_prof")
 def Calc_Inclination_Profile(G, eval_in_band="r"):
     """Compute the inclination at a requested radius and band. Accounting
     for intrinsic thickness of the disk.
@@ -171,7 +168,6 @@ def Calc_Inclination_Profile(G, eval_in_band="r"):
 
 @all_appR
 @catch_errors
-@prime_dict("inclination")
 def Calc_Inclination(G, eval_in_band="r", eval_at_R=None, eval_at_band=None):
     """Compute the inclination at a requested radius and band. Accounting
     for intrinsic thickness of the disk.
@@ -185,7 +181,6 @@ def Calc_Inclination(G, eval_in_band="r", eval_at_R=None, eval_at_band=None):
 
 
 @catch_errors
-@prime_dict("rc_model")
 def Calc_C97_Velocity_Fit(G):
     x = Courteau97_Model_Fit(
         G["rotation curve"]["R"],
@@ -206,7 +201,6 @@ def Calc_C97_Velocity_Fit(G):
 
 
 @catch_errors
-@prime_dict("rc_model")
 def Calc_Tan_Velocity_Fit(G):
 
     x = Tan_Model_Fit(
@@ -225,7 +219,6 @@ def Calc_Tan_Velocity_Fit(G):
     return G
 
 @catch_errors
-@prime_dict("rc_model")
 def Calc_Tanh_Velocity_Fit(G):
     
     x = Tanh_Model_Fit(
@@ -246,7 +239,6 @@ def Calc_Tanh_Velocity_Fit(G):
 
 @all_appR
 @catch_errors
-@prime_dict("V")
 def Calc_Velocity(G, eval_at_R=None, eval_at_band=None, eval_with_model="C97"):
     """
     Compute the rotation velocity at a requested radius and band.
@@ -265,7 +257,11 @@ def Calc_Velocity(G, eval_at_R=None, eval_at_band=None, eval_with_model="C97"):
         model = Tanh_Model_Evaluate
     else:
         raise ValueError(f"unrecognized model type {eval_with_model}")
-    Vobs = model(x[:-2] + [0, 0], G["appR"][f"{eval_at_R}:{eval_at_band}"])
+    if eval_at_R == 'RI':
+        # If evaluating at infinity, try to evaluate at the limit, but max out at 1.5 times the largest actual measured radius
+        Vobs = min(model(x[:-2] + [0, 0], np.inf), np.max(np.abs(G["rotation curve"]['V']))*1.5)
+    else:
+        Vobs = model(x[:-2] + [0, 0], G["appR"][f"{eval_at_R}:{eval_at_band}"])
     incl_corr = np.sin(G["inclination"][f"{eval_at_R}:{eval_at_band}"])
     Vcorr = abs(Vobs) / incl_corr
     Vcorr_E = G["rotation curve"]["V_e"][
@@ -284,7 +280,6 @@ def Calc_Velocity(G, eval_at_R=None, eval_at_band=None, eval_with_model="C97"):
 
 
 @catch_errors
-@prime_dict("Col_prof")
 def Calc_Colour_Profile(G, eval_in_colour1="g", eval_in_colour2="r"):
     """
     Compute a profile giving colour density as a function of radius
@@ -369,7 +364,6 @@ def Calc_Colour_Profile(G, eval_in_colour1="g", eval_in_colour2="r"):
 @all_bands
 @all_appR
 @catch_errors
-@prime_dict("appMag")
 def Calc_Apparent_Magnitude(G, eval_in_band=None, eval_at_R=None, eval_at_band=None):
     """
     Compute the total apparent magnitude within a requested radius and at a requested band.
@@ -379,8 +373,8 @@ def Calc_Apparent_Magnitude(G, eval_in_band=None, eval_at_R=None, eval_at_band=N
 
     # if extrapolating to infinity, do evaluations at R23.5 and
     # extrapolate at the end
-    if eval_at_R == "Rinf":
-        eval_at_R = "Ri23.5"
+    if eval_at_R == "RI":
+        eval_at_R = "Rp80"
         to_inf = True
     else:
         to_inf = False
@@ -397,9 +391,10 @@ def Calc_Apparent_Magnitude(G, eval_in_band=None, eval_at_R=None, eval_at_band=N
 
     # add extrapolation if integrating to infinity
     if to_inf:
+        infCHOOSE = sbR > G['appR'][f"Rp60:{eval_at_band}"]
         p = np.polyfit(
-            sbR[np.logical_and(sbSB > 23, sbSB < 26)],
-            sbSB[np.logical_and(sbSB > 23, sbSB < 26)],
+            sbR[infCHOOSE],
+            sbSB[infCHOOSE],
             1,
         )
         pprime = (-p[0] / 2.5, (22.5 - p[1]) / 2.5)
@@ -410,7 +405,7 @@ def Calc_Apparent_Magnitude(G, eval_in_band=None, eval_at_R=None, eval_at_band=N
             / ((pprime[0] ** 2) * (np.log(10) ** 2))
         )
         Mag = [flux_to_mag(L_inf + mag_to_flux(Mag[0], 22.5), 22.5), Mag[1]]
-        eval_at_R = "Rinf"
+        eval_at_R = "RI"
 
     G["appMag"][f"{eval_in_band}|{eval_at_R}:{eval_at_band}"] = Mag[0]
     G["appMag"][f"{eval_in_band}:E|{eval_at_R}:{eval_at_band}"] = Mag[1]
@@ -420,7 +415,6 @@ def Calc_Apparent_Magnitude(G, eval_in_band=None, eval_at_R=None, eval_at_band=N
 @all_bands
 @all_appR
 @catch_errors
-@prime_dict("absMag")
 def Calc_Absolute_Magnitude(G, eval_in_band=None, eval_at_R=None, eval_at_band=None):
     """
     Compute the total absolute magnitude within a requested radius and at a requested band.
@@ -444,7 +438,6 @@ def Calc_Absolute_Magnitude(G, eval_in_band=None, eval_at_R=None, eval_at_band=N
 @all_bands
 @all_appR
 @catch_errors
-@prime_dict("L")
 def Calc_Luminosity(G, eval_in_band=None, eval_at_R=None, eval_at_band=None):
     """
     Compute the total luminosity within a requested radius and at a requested band.
@@ -466,7 +459,6 @@ def Calc_Luminosity(G, eval_in_band=None, eval_at_R=None, eval_at_band=None):
 
 @all_appR
 @catch_errors
-@prime_dict("Col_in")
 def Calc_Colour_within(
     G, eval_in_colour1="g", eval_in_colour2="r", eval_at_R=None, eval_at_band=None
 ):
@@ -476,27 +468,30 @@ def Calc_Colour_within(
     references: Calc_Colour_Profile
     """
 
-    G["Col_in"][
-        f"{eval_in_colour1}:{eval_in_colour2}|{eval_at_R}:{eval_at_band}"
-    ] = np.interp(
-        G["appR"][f"{eval_at_R}:{eval_at_band}"],
-        G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["R"],
-        G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["totcol"],
-    )
-    G["Col_in"][
-        f"{eval_in_colour1}:{eval_in_colour2}:E|{eval_at_R}:{eval_at_band}"
-    ] = np.interp(
-        G["appR"][f"{eval_at_R}:{eval_at_band}"],
-        G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["R"],
-        G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["totcol_e"],
-    )
+    if eval_at_R == 'RI':
+        Col = [G['appMag'][f"{eval_in_colour1}|{eval_at_R}:{eval_at_band}"] - G['appMag'][f"{eval_in_colour2}|{eval_at_R}:{eval_at_band}"],
+               np.sqrt(G['appMag'][f"{eval_in_colour1}:E|{eval_at_R}:{eval_at_band}"]**2 + G['appMag'][f"{eval_in_colour2}:E|{eval_at_R}:{eval_at_band}"]**2)]
+    else:
+        Col = [
+            np.interp(
+                G["appR"][f"{eval_at_R}:{eval_at_band}"],
+                G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["R"],
+                G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["totcol"],
+            ),
+            np.interp(
+                G["appR"][f"{eval_at_R}:{eval_at_band}"],
+                G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["R"],
+                G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["totcol_e"],
+            )
+        ]
+    G["Col_in"][f"{eval_in_colour1}:{eval_in_colour2}|{eval_at_R}:{eval_at_band}"] = Col[0]
+    G["Col_in"][f"{eval_in_colour1}:{eval_in_colour2}:E|{eval_at_R}:{eval_at_band}"] = Col[1]
 
     return G
 
 
 @all_appR
 @catch_errors
-@prime_dict("Col_at")
 def Calc_Colour_at(
     G, eval_in_colour1="g", eval_in_colour2="r", eval_at_R=None, eval_at_band=None
 ):
@@ -505,6 +500,8 @@ def Calc_Colour_at(
 
     references: Calc_Colour_Profile
     """
+    if eval_at_R == 'RI':
+        return G
 
     G["Col_at"][
         f"{eval_in_colour1}:{eval_in_colour2}|{eval_at_R}:{eval_at_band}"
@@ -525,7 +522,6 @@ def Calc_Colour_at(
 
 
 @catch_errors
-@prime_dict("M2L_prof")
 def Calc_Mass_to_Light_Profile(
     G, eval_in_band="g", eval_in_colour1="g", eval_in_colour2="r"
 ):
@@ -543,6 +539,8 @@ def Calc_Mass_to_Light_Profile(
     G["M2L_prof"][f"{eval_in_band}|{eval_in_colour1}:{eval_in_colour2}"]["R"] = G[
         "Col_prof"
     ][f"{eval_in_colour1}:{eval_in_colour2}"]["R"]
+    # M2L in
+    #---------------------------------------------------------------------
     M2L = Get_M2L(
         G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["totcol"],
         f"{eval_in_colour1}-{eval_in_colour2}",
@@ -556,6 +554,20 @@ def Calc_Mass_to_Light_Profile(
     G["M2L_prof"][f"{eval_in_band}|{eval_in_colour1}:{eval_in_colour2}"][
         "M2L_in_e"
     ] = M2L[1]
+    #M2L inf
+    #---------------------------------------------------------------------
+    M2L = Get_M2L(
+        G['Col_in'][f"{eval_in_colour1}:{eval_in_colour2}|RI:r"],
+        f"{eval_in_colour1}-{eval_in_colour2}",
+        eval_in_band,
+        m2l_table,
+        colour_err = G['Col_in'][f"{eval_in_colour1}:{eval_in_colour2}:E|RI:r"], # fixme, specify band for RI
+    )
+    G['M2L_prof'][f"{eval_in_band}|{eval_in_colour1}:{eval_in_colour2}"]['M2L_RI'] = M2L[0]
+    G['M2L_prof'][f"{eval_in_band}|{eval_in_colour1}:{eval_in_colour2}"]['M2L_RI_e'] = M2L[1]
+
+    # M2L at
+    #---------------------------------------------------------------------
     M2L = Get_M2L(
         G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["col"],
         f"{eval_in_colour1}-{eval_in_colour2}",
@@ -575,7 +587,6 @@ def Calc_Mass_to_Light_Profile(
 
 @all_appR
 @catch_errors
-@prime_dict("M2L_in")
 def Calc_Mass_to_Light_within(
     G,
     eval_in_band=None,
@@ -590,6 +601,11 @@ def Calc_Mass_to_Light_within(
     references: Calc_Mass_to_Light_Profile
     """
 
+    if eval_at_R == 'RI':
+        G["M2L_in"][f"{eval_in_band}|Col:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"] = G["M2L_prof"][f"{eval_in_band}|{eval_at_colour1}:{eval_at_colour2}"]["M2L_RI"]
+        G["M2L_in"][f"{eval_in_band}:E|Col:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"] = G["M2L_prof"][f"{eval_in_band}|{eval_at_colour1}:{eval_at_colour2}"]["M2L_RI_e"]
+        return G
+    
     G["M2L_in"][
         f"{eval_in_band}|Col:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"
     ] = np.interp(
@@ -612,7 +628,6 @@ def Calc_Mass_to_Light_within(
 
 @all_appR
 @catch_errors
-@prime_dict("M2L_at")
 def Calc_Mass_to_Light_at(
     G,
     eval_in_band=None,
@@ -627,6 +642,9 @@ def Calc_Mass_to_Light_at(
     references: Calc_Mass_to_Light_Profile
     """
 
+    if eval_at_R == 'RI':
+        return G
+        
     G["M2L_at"][
         f"{eval_in_band}|Col:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"
     ] = np.interp(
@@ -648,7 +666,6 @@ def Calc_Mass_to_Light_at(
 
 
 @catch_errors
-@prime_dict("Con")
 def Calc_Concentration(G, eval_at_R1="Rp20", eval_at_R2="Rp80", eval_in_band="r"):
     """
     Compute the light concentration for a requested pair of radii and at a requested band.
@@ -673,7 +690,6 @@ def Calc_Concentration(G, eval_at_R1="Rp20", eval_at_R2="Rp80", eval_in_band="r"
 
 @all_bands
 @catch_errors
-@prime_dict("sersic")
 def Calc_Sersic_Params(G, eval_in_band=None):
     """
     Compute the sersic index for a light profile of a given band.
@@ -701,7 +717,6 @@ def Calc_Sersic_Params(G, eval_in_band=None):
 @all_bands
 @all_appR
 @catch_errors
-@prime_dict("SD_in")
 def Calc_Surface_Density_within(
     G, eval_in_band=None, eval_at_R=None, eval_at_band=None
 ):
@@ -710,7 +725,9 @@ def Calc_Surface_Density_within(
 
     references: Calc_Apparent_Radius, Calc_Apparent_Magnitude
     """
-    
+
+    if eval_at_R == 'RI':
+        return G
     A = np.pi*G["q"][f"{eval_at_R}:{eval_at_band}"]*G["appR"][f"{eval_at_R}:{eval_at_band}"] ** 2
     Ae1 = (
         G["q"][f"E|{eval_at_R}:{eval_at_band}"]
@@ -739,7 +756,6 @@ def Calc_Surface_Density_within(
 @all_bands
 @all_appR
 @catch_errors
-@prime_dict("SD_at")
 def Calc_Surface_Density_at(G, eval_in_band=None, eval_at_R=None, eval_at_band=None):
     """
     Compute the light surface density within a requested radius and at a requested band.
@@ -747,6 +763,8 @@ def Calc_Surface_Density_at(G, eval_in_band=None, eval_at_R=None, eval_at_band=N
     references: Calc_Apparent_Radius
     """
 
+    if eval_at_R == 'RI':
+        return G
     G["SD_at"][f"{eval_in_band}|{eval_at_R}:{eval_at_band}"] = np.interp(
         G["appR"][f"{eval_at_R}:{eval_at_band}"],
         G["photometry"][eval_in_band]["R"],
@@ -761,7 +779,6 @@ def Calc_Surface_Density_at(G, eval_in_band=None, eval_at_R=None, eval_at_band=N
     return G
 
 @catch_errors
-@prime_dict("Mstar_prof")
 def Calc_Stellar_Mass_Profile(
     G,
     eval_in_bands=["r", "g", "z", "w1"],
@@ -825,6 +842,9 @@ def Calc_Stellar_Mass_Profile(
     if "distance" in G:
         G["Mstar_prof"]["Mstar"] = np.mean(mass_estimates, axis=1)
         G["Mstar_prof"]["Mstar_e"] = np.std(mass_estimates, axis=1)
+        RI_estimates = list(G["M2L_prof"][f"{b}|{c1}:{c2}"]["M2L_RI"]*G['L'][f"{b}|RI:r"] for b, c1, c2 in zip(eval_in_bands, eval_in_colours1, eval_in_colours2))
+        G["Mstar_prof"]['Mstar_RI'] = np.mean(RI_estimates)
+        G["Mstar_prof"]['Mstar_RI_e'] = np.std(RI_estimates)
     G["Mstar_prof"]["MstarDens"] = np.mean(mass_dens_estimates, axis=1)
     G["Mstar_prof"]["MstarDens_e"] = np.std(mass_dens_estimates, axis=1)
 
@@ -833,8 +853,12 @@ def Calc_Stellar_Mass_Profile(
 
 @all_appR
 @catch_errors
-@prime_dict("Mstar")
 def Calc_Stellar_Mass(G, eval_at_R=None, eval_at_band=None):
+
+    if eval_at_R == 'RI':
+        G["Mstar"][f"{eval_at_R}:{eval_at_band}"] = G["Mstar_prof"]['Mstar_RI']
+        G["Mstar"][f"E|{eval_at_R}:{eval_at_band}"] = G["Mstar_prof"]['Mstar_RI_e']
+        return G
     
     G["Mstar"][f"{eval_at_R}:{eval_at_band}"] = np.interp(
         G["appR"][f"{eval_at_R}:{eval_at_band}"],
@@ -851,7 +875,6 @@ def Calc_Stellar_Mass(G, eval_at_R=None, eval_at_band=None):
 
 
 @catch_errors
-@prime_dict("appR")
 def Calc_Stellar_Mass_Density_Radius(G, eval_at_R="Rd1", eval_at_tracer="*"):
     """
     calculates the radius at which a certain stellar mass density is reached
@@ -873,7 +896,6 @@ def Calc_Stellar_Mass_Density_Radius(G, eval_at_R="Rd1", eval_at_tracer="*"):
 
 
 @catch_errors
-@prime_dict("Mdyn_prof")
 def Calc_Dynamical_Mass_Profile(G, eval_in_band="r", eval_with_model="C97"):
     """
     calculates a profile of dynamical mass values using newtonian M = RV^2 / G
@@ -922,7 +944,6 @@ def Calc_Dynamical_Mass_Profile(G, eval_in_band="r", eval_with_model="C97"):
 
 @all_appR
 @catch_errors
-@prime_dict("Mdyn")
 def Calc_Dynamical_Mass(G, eval_at_R=None, eval_at_band=None):
     """
     computes the dynamical mass at a specific radius
@@ -930,6 +951,9 @@ def Calc_Dynamical_Mass(G, eval_at_R=None, eval_at_band=None):
     references: Calc_Dynamical_Mass_Profile
     """
 
+    if eval_at_R == 'RI':
+        return G
+    
     G["Mdyn"][f"{eval_at_R}:{eval_at_band}"] = np.interp(
         G["appR"][f"{eval_at_R}:{eval_at_band}"],
         G["Mdyn_prof"]["R"],
@@ -945,7 +969,6 @@ def Calc_Dynamical_Mass(G, eval_at_R=None, eval_at_band=None):
 
 
 @catch_errors
-@prime_dict("AngMom_prof")
 def Calc_Angular_Momentum_Profile(G, eval_in_band="r", eval_with_model="C97"):
     """
 
@@ -1018,10 +1041,12 @@ def Calc_Angular_Momentum_Profile(G, eval_in_band="r", eval_with_model="C97"):
 
 @all_appR
 @catch_errors
-@prime_dict("AM")
 def Calc_Angular_Momentum(G, eval_at_R=None, eval_at_band=None):
 
 
+    if eval_at_R == 'RI':
+        return G
+    
     G["AM"][f"{eval_at_R}:{eval_at_band}"] = np.interp(
         G["appR"][f"{eval_at_R}:{eval_at_band}"],
         G["AngMom_prof"]["R"],
@@ -1037,7 +1062,6 @@ def Calc_Angular_Momentum(G, eval_at_R=None, eval_at_band=None):
 
 
 @catch_errors
-@prime_dict("AngMomStar_prof")
 def Calc_Stellar_Angular_Momentum_Profile(
     G,
     eval_in_band="r",
@@ -1128,13 +1152,15 @@ def Calc_Stellar_Angular_Momentum_Profile(
 
 @all_appR
 @catch_errors
-@prime_dict("AMstar")
 def Calc_Stellar_Angular_Momentum(
     G,
     eval_at_R=None,
     eval_at_band=None,
 ):
 
+    if eval_at_R == 'RI':
+        return G
+    
     G["AMstar"][f"{eval_at_R}:{eval_at_band}"] = np.interp(
         G["appR"][f"{eval_at_R}:{eval_at_band}"],
         G["AngMomStar_prof"]["R"],

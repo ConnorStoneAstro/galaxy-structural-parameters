@@ -14,17 +14,30 @@ from .Diagnostic_Plots import (
     Plot_Radii,
     Plot_Velocity,
 )
+from .Supporting_Functions import allradii
 from functools import partial
+from collections import defaultdict
 import numpy as np
 sys.path.append(os.environ["PROGRAMMING"])
 from FlowChart import flow
 
+def to_defaultdict(G):
+    if isinstance(G, defaultdict):
+        return G
+    newG = defaultdict(dict)
+    newG.update(G)
+    return newG
+    
 def Build_Inclination_Correction_Prep(eval_after_R = None, eval_after_band = None):
     # Structural Parameters Flowchart
     ######################################################################
-    Incl_Prep = flow.Chart("inclination preparation")
+    Incl_Prep = flow.Chart("inclination preparation", logfile = 'structural_parameters.log')
     Incl_Prep.linear_mode(True)
 
+    # Convert to defaultdict
+    ######################################################################
+    Incl_Prep.add_process_node("prime galaxy dict", to_defaultdict)
+    
     # Apply corrections to photometry
     ######################################################################
     Photometry_Corrections = flow.Chart("photometry corrections")
@@ -58,13 +71,25 @@ def Build_Inclination_Correction_Prep(eval_after_R = None, eval_after_band = Non
 
     return Incl_Prep
     
-def Build_Structural_Parameters_Flowchart(primary_band, eval_at_radii, eval_at_bands, colours, concentrations, stellarmass_bands, eval_at_density_radii, incl_corr_specification = None):
+def Build_Structural_Parameters_Flowchart(
+        primary_band = 'r',
+        eval_at_radii = allradii,
+        eval_at_bands = ['r'],
+        colours = [("f", "n"), ("g", "r"), ("g", "z"), ("r", "z"), ("w1", "w2")],
+        concentrations = [("Rp20", "Rp80"), ("Ri22", "Ri26"), ("Ri23.5", "Ri26")],
+        stellarmass_bands = [('r', 'g', 'z', 'w1'), ('g', 'g', 'r', 'w1'), ('r', 'z', 'z', 'w2')],
+        eval_at_density_radii = ["Rd500", "Rd100", "Rd50", "Rd10", "Rd5", "Rd1"],
+        incl_corr_specification = None):
     
     # Structural Parameters Flowchart
     ######################################################################
     Structural_Parameters = flow.Chart("structural parameters", logfile = 'structural_parameters.log')
     Structural_Parameters.linear_mode(True)
 
+    # Convert to defaultdict
+    ######################################################################
+    Structural_Parameters.add_process_node("prime galaxy dict", to_defaultdict)
+    
     # Inclination
     Structural_Parameters.add_process_node("inclination profile", partial(Calc_Inclination_Profile, eval_in_band = primary_band))
     
@@ -238,13 +263,13 @@ def Build_Structural_Parameters_Flowchart(primary_band, eval_at_radii, eval_at_b
     Structural_Parameters.add_process_node("dynamical mass profile", partial(Calc_Dynamical_Mass_Profile, eval_in_band = primary_band))
     Structural_Parameters.add_process_node("dynamical mass", Calc_Dynamical_Mass)
 
-    # Angular Momentum
-    Structural_Parameters.add_process_node("angular momentum profile", partial(Calc_Angular_Momentum_Profile, eval_in_band = primary_band))
-    Structural_Parameters.add_process_node("angular momentum", Calc_Angular_Momentum)
+    # # Angular Momentum
+    # Structural_Parameters.add_process_node("angular momentum profile", partial(Calc_Angular_Momentum_Profile, eval_in_band = primary_band))
+    # Structural_Parameters.add_process_node("angular momentum", Calc_Angular_Momentum)
 
-    # Stellar Angular Momentum
-    Structural_Parameters.add_process_node("stellar angular momentum profile", partial(Calc_Stellar_Angular_Momentum_Profile, eval_in_band = primary_band))
-    Structural_Parameters.add_process_node("stellar angular momentum", Calc_Stellar_Angular_Momentum)
+    # # Stellar Angular Momentum
+    # Structural_Parameters.add_process_node("stellar angular momentum profile", partial(Calc_Stellar_Angular_Momentum_Profile, eval_in_band = primary_band))
+    # Structural_Parameters.add_process_node("stellar angular momentum", Calc_Stellar_Angular_Momentum)
     
     # Luminosity
     Structural_Parameters.add_process_node("luminosity", Calc_Luminosity)

@@ -48,52 +48,73 @@ import numpy as np
 
 
 @catch_errors
-def Calc_Apparent_Radius(G, eval_at_R="Ri23.5", eval_at_band="r"):
+def Calc_Apparent_Radius(G, eval_at_R="Ri23.5", eval_at_tracer="r"):
     """
     Compute the apparent radius for a given requested radius and band.
 
     references: None
     """
+    
     if eval_at_R == "RI":
         Reval = [np.inf, 0.0]
-    elif eval_at_R[:2] == "Ri":
+    elif eval_at_R == "Rlast" and eval_at_tracer == 'rc':
+        Reval = [np.max(np.abs(G['rotation curve']['R'])), np.mean(np.abs(G['rotation curve']['R'][:-1] - G['rotation curve']['R'][1:]))]
+    elif eval_at_R.startswith("Ri"):
         iso = float(eval_at_R[2:])
-        if iso < G["photometry"][eval_at_band]["SB"][0]:
+        if iso < G["photometry"][eval_at_tracer]["SB"][0]:
             Reval = [0.,0.]
         else:
             Reval = Isophotal_Radius(
-                G["photometry"][eval_at_band]["R"],
-                G["photometry"][eval_at_band]["SB"],
+                G["photometry"][eval_at_tracer]["R"],
+                G["photometry"][eval_at_tracer]["SB"],
                 iso,
-                E=G["photometry"][eval_at_band]["SB_e"],
+                E=G["photometry"][eval_at_tracer]["SB_e"],
             )
-    elif eval_at_R[:2] == "Rp":
+    elif eval_at_R.startswith("Rp"):
         per = float(eval_at_R[2:])
         if per <= 0 or per >= 100:
-            Reval = [0., 0.]
+            raise ValueError(f'Percentage should be from 0 to 100 not: {eval_at_R}')
         else:
             Reval = Effective_Radius(
-                G["photometry"][eval_at_band]["R"],
-                G["photometry"][eval_at_band]["totmag"],
-                E=G["photometry"][eval_at_band]["totmag_e"],
+                G["photometry"][eval_at_tracer]["R"],
+                G["photometry"][eval_at_tracer]["totmag"],
+                E=G["photometry"][eval_at_tracer]["totmag_e"],
                 ratio=per / 100,
             )
-    elif eval_at_R[:2] == "Re":
-        if f'Rp50:{eval_at_band}' in G['appR']:
-            Reval = [G['appR'][f"Rp50:{eval_at_band}"], G['appR'][f"E|Rp50:{eval_at_band}"]]
+    elif eval_at_R.startswith("Re"):
+        if f'Rp50:{eval_at_tracer}' in G['appR']:
+            Reval = [G['appR'][f"Rp50:{eval_at_tracer}"], G['appR'][f"E|Rp50:{eval_at_tracer}"]]
         else:
             Reval = Effective_Radius(
-                G["photometry"][eval_at_band]["R"],
-                G["photometry"][eval_at_band]["totmag"],
-                E=G["photometry"][eval_at_band]["totmag_e"],
+                G["photometry"][eval_at_tracer]["R"],
+                G["photometry"][eval_at_tracer]["totmag"],
+                E=G["photometry"][eval_at_tracer]["totmag_e"],
                 ratio=0.5,
             )
         Reval = (float(eval_at_R[2:]) * Reval[0], Reval[1])
+    elif eval_at_R.startswith("Rd") and eval_at_tracer == '*':
+        Reval = Isophotal_Radius(
+            G["Mstar_prof"]["R"],
+            -np.log10(G["Mstar_prof"]["MstarDens"]),
+            -np.log10(float(eval_at_R[2:])),
+            E=G["Mstar_prof"]["MstarDens_e"] / (np.log(10) * G["Mstar_prof"]["MstarDens"]),
+        )
+    elif eval_at_R.startswith("R*") and eval_at_tracer == '*':
+        per = float(eval_at_R[2:])
+        if per <= 0 or per >= 100:
+            raise ValueError(f'Percentage should be from 0 to 100 not: {eval_at_R}')
+        else:
+            Reval = Isophotal_Radius(
+                G["Mstar_prof"]["R"],
+                G["Mstar_prof"]["Mstar"] / G["Mstar_prof"]["Mstar"][-1],
+                per / 100,
+                E=G["Mstar_prof"]["Mstar_e"] / G["Mstar_prof"]["Mstar"][-1],
+            )
     else:
         raise ValueError(f"unrecognized evaluation radius: {eval_at_R}")
 
-    G["appR"][f"{eval_at_R}:{eval_at_band}"] = Reval[0]
-    G["appR"][f"E|{eval_at_R}:{eval_at_band}"] = Reval[1]
+    G["appR"][f"{eval_at_R}:{eval_at_tracer}"] = Reval[0]
+    G["appR"][f"E|{eval_at_R}:{eval_at_tracer}"] = Reval[1]
     return G
 
 @all_appR
@@ -174,7 +195,11 @@ def Calc_Inclination(G, eval_in_band="r", eval_at_R=None, eval_at_band=None):
 
     references: Calc_Axis_Ratio
     """
-    G["inclination"][f"{eval_at_R}:{eval_at_band}"] = np.interp(G['appR'][f"{eval_at_R}:{eval_at_band}"], G['inclination_prof']['R'], G['inclination_prof']['inclination'])
+    G["inclination"][f"{eval_at_R}:{eval_at_band}"] = np.interp(
+        G['appR'][f"{eval_at_R}:{eval_at_band}"],
+        G['inclination_prof']['R'],
+        G['inclination_prof']['inclination']
+    )
     G["inclination"][f"E|{eval_at_R}:{eval_at_band}"] = 5 * np.pi / 180  # fixme
 
     return G
@@ -245,6 +270,9 @@ def Calc_Velocity(G, eval_at_R=None, eval_at_band=None, eval_with_model="C97"):
 
     references: Calc_C97_Velocity_Fit, Calc_Apparent_Radius
     """
+    if eval_at_R == 'RI':
+        # Cannot evaluate velocity at infinity
+        return G
     x = list(
         G["rc_model"][f"{eval_with_model}:{p}"]
         for p in G["rc_model"][f"{eval_with_model}:param order"]
@@ -257,11 +285,8 @@ def Calc_Velocity(G, eval_at_R=None, eval_at_band=None, eval_with_model="C97"):
         model = Tanh_Model_Evaluate
     else:
         raise ValueError(f"unrecognized model type {eval_with_model}")
-    if eval_at_R == 'RI':
-        # If evaluating at infinity, try to evaluate at the limit, but max out at 1.5 times the largest actual measured radius
-        Vobs = min(model(x[:-2] + [0, 0], np.inf), np.max(np.abs(G["rotation curve"]['V']))*1.5)
-    else:
-        Vobs = model(x[:-2] + [0, 0], G["appR"][f"{eval_at_R}:{eval_at_band}"])
+    
+    Vobs = model(x[:-2] + [0, 0], G["appR"][f"{eval_at_R}:{eval_at_band}"])
     incl_corr = np.sin(G["inclination"][f"{eval_at_R}:{eval_at_band}"])
     Vcorr = abs(Vobs) / incl_corr
     Vcorr_E = G["rotation curve"]["V_e"][
@@ -337,8 +362,7 @@ def Calc_Colour_Profile(G, eval_in_colour1="g", eval_in_colour2="r"):
             subR,
             G["photometry"][eval_in_colour2]["R"][subprof2],
             G["photometry"][eval_in_colour2]["SB_e"][subprof2],
-        )
-        ** 2
+        )** 2
     )
     G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["totcol"] = np.interp(
         subR,
@@ -349,15 +373,15 @@ def Calc_Colour_Profile(G, eval_in_colour1="g", eval_in_colour2="r"):
         G["photometry"][eval_in_colour2]["R"][subprof2],
         G["photometry"][eval_in_colour2]["totmag"][subprof2],
     )
-    G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["totcol_e"] = np.interp(
+    G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["totcol_e"] = np.sqrt(np.interp(
         subR,
         G["photometry"][eval_in_colour1]["R"][subprof1],
         G["photometry"][eval_in_colour1]["totmag_e"][subprof1],
-    ) - np.interp(
+    )**2 + np.interp(
         subR,
         G["photometry"][eval_in_colour2]["R"][subprof2],
         G["photometry"][eval_in_colour2]["totmag_e"][subprof2],
-    )
+    )**2)
 
     return G
 
@@ -374,18 +398,18 @@ def Calc_Apparent_Magnitude(G, eval_in_band=None, eval_at_R=None, eval_at_band=N
     # if extrapolating to infinity, do evaluations at R23.5 and
     # extrapolate at the end
     if eval_at_R == "RI":
-        eval_at_R = "Rp80"
+        evalR = G["photometry"][eval_in_band]["R"][-1]
         to_inf = True
     else:
         to_inf = False
-
+        evalR = G["appR"][f"{eval_at_R}:{eval_at_band}"]
     sbR = G["photometry"][eval_in_band]["R"]
     sbSB = G["photometry"][eval_in_band]["SB"]
 
     Mag = Evaluate_Magnitude(
         sbR,
         G["photometry"][eval_in_band]["totmag"],
-        G["appR"][f"{eval_at_R}:{eval_at_band}"],
+        evalR,
         E=G["photometry"][eval_in_band]["totmag_e"],
     )
 
@@ -400,12 +424,15 @@ def Calc_Apparent_Magnitude(G, eval_in_band=None, eval_at_R=None, eval_at_band=N
         pprime = (-p[0] / 2.5, (22.5 - p[1]) / 2.5)
         prefactor = -2 * np.pi * G["q"][f"{eval_at_R}:{eval_at_band}"]
         L_inf = prefactor * (
-            (10 ** (pprime[0] * G["appR"][f"{eval_at_R}:{eval_at_band}"] + pprime[1]))
-            * (pprime[0] * G["appR"][f"{eval_at_R}:{eval_at_band}"] * np.log(10) - 1)
+            (10 ** (pprime[0] * evalR + pprime[1]))
+            * (pprime[0] * evalR * np.log(10) - 1)
             / ((pprime[0] ** 2) * (np.log(10) ** 2))
         )
-        Mag = [flux_to_mag(L_inf + mag_to_flux(Mag[0], 22.5), 22.5), Mag[1]]
-        eval_at_R = "RI"
+        
+        newMag = [flux_to_mag(L_inf + mag_to_flux(Mag[0], 22.5), 22.5), Mag[1]]
+        # Only add the flux to infinity if it is a small value
+        if 0 < Mag[0] - newMag[0] < 1:
+            Mag = newMag
 
     G["appMag"][f"{eval_in_band}|{eval_at_R}:{eval_at_band}"] = Mag[0]
     G["appMag"][f"{eval_in_band}:E|{eval_at_R}:{eval_at_band}"] = Mag[1]
@@ -469,8 +496,8 @@ def Calc_Colour_within(
     """
 
     if eval_at_R == 'RI':
-        Col = [G['appMag'][f"{eval_in_colour1}|{eval_at_R}:{eval_at_band}"] - G['appMag'][f"{eval_in_colour2}|{eval_at_R}:{eval_at_band}"],
-               np.sqrt(G['appMag'][f"{eval_in_colour1}:E|{eval_at_R}:{eval_at_band}"]**2 + G['appMag'][f"{eval_in_colour2}:E|{eval_at_R}:{eval_at_band}"]**2)]
+        Col = [G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["totcol"][-1],
+               G["Col_prof"][f"{eval_in_colour1}:{eval_in_colour2}"]["totcol_e"][-1]]
     else:
         Col = [
             np.interp(
@@ -554,17 +581,6 @@ def Calc_Mass_to_Light_Profile(
     G["M2L_prof"][f"{eval_in_band}|{eval_in_colour1}:{eval_in_colour2}"][
         "M2L_in_e"
     ] = M2L[1]
-    #M2L inf
-    #---------------------------------------------------------------------
-    M2L = Get_M2L(
-        G['Col_in'][f"{eval_in_colour1}:{eval_in_colour2}|RI:r"],
-        f"{eval_in_colour1}-{eval_in_colour2}",
-        eval_in_band,
-        m2l_table,
-        colour_err = G['Col_in'][f"{eval_in_colour1}:{eval_in_colour2}:E|RI:r"], # fixme, specify band for RI
-    )
-    G['M2L_prof'][f"{eval_in_band}|{eval_in_colour1}:{eval_in_colour2}"]['M2L_RI'] = M2L[0]
-    G['M2L_prof'][f"{eval_in_band}|{eval_in_colour1}:{eval_in_colour2}"]['M2L_RI_e'] = M2L[1]
 
     # M2L at
     #---------------------------------------------------------------------
@@ -602,19 +618,30 @@ def Calc_Mass_to_Light_within(
     """
 
     if eval_at_R == 'RI':
-        G["M2L_in"][f"{eval_in_band}|Col:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"] = G["M2L_prof"][f"{eval_in_band}|{eval_at_colour1}:{eval_at_colour2}"]["M2L_RI"]
-        G["M2L_in"][f"{eval_in_band}:E|Col:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"] = G["M2L_prof"][f"{eval_in_band}|{eval_at_colour1}:{eval_at_colour2}"]["M2L_RI_e"]
+        if eval_in_band in ["g", "r", "i", "z", "H"]:
+            m2l_table = "Roediger_BC03"
+        elif eval_in_band in ["w1", "w2"]:
+            m2l_table = "Cluver_2014"
+        M2L = Get_M2L(
+            G["Col_in"][f"{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"],
+            f"{eval_at_colour1}-{eval_at_colour2}",
+            eval_in_band,
+            m2l_table,
+            colour_err=G["Col_in"][f"{eval_at_colour1}:{eval_at_colour2}:E|{eval_at_R}:{eval_at_band}"],
+        )
+        G["M2L_in"][f"{eval_in_band}:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"] = M2L[0]
+        G["M2L_in"][f"{eval_in_band}:{eval_at_colour1}:{eval_at_colour2}:E|{eval_at_R}:{eval_at_band}"] = M2L[1]
         return G
     
     G["M2L_in"][
-        f"{eval_in_band}|Col:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"
+        f"{eval_in_band}:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"
     ] = np.interp(
         G["appR"][f"{eval_at_R}:{eval_at_band}"],
         G["M2L_prof"][f"{eval_in_band}|{eval_at_colour1}:{eval_at_colour2}"]["R"],
         G["M2L_prof"][f"{eval_in_band}|{eval_at_colour1}:{eval_at_colour2}"]["M2L_in"],
     )
     G["M2L_in"][
-        f"{eval_in_band}:E|Col:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"
+        f"{eval_in_band}:{eval_at_colour1}:{eval_at_colour2}:E|{eval_at_R}:{eval_at_band}"
     ] = np.interp(
         G["appR"][f"{eval_at_R}:{eval_at_band}"],
         G["M2L_prof"][f"{eval_in_band}|{eval_at_colour1}:{eval_at_colour2}"]["R"],
@@ -646,14 +673,14 @@ def Calc_Mass_to_Light_at(
         return G
         
     G["M2L_at"][
-        f"{eval_in_band}|Col:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"
+        f"{eval_in_band}:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"
     ] = np.interp(
         G["appR"][f"{eval_at_R}:{eval_at_band}"],
         G["M2L_prof"][f"{eval_in_band}|{eval_at_colour1}:{eval_at_colour2}"]["R"],
         G["M2L_prof"][f"{eval_in_band}|{eval_at_colour1}:{eval_at_colour2}"]["M2L_at"],
     )
     G["M2L_at"][
-        f"{eval_in_band}:E|Col:{eval_at_colour1}:{eval_at_colour2}|{eval_at_R}:{eval_at_band}"
+        f"{eval_in_band}:{eval_at_colour1}:{eval_at_colour2}:E|{eval_at_R}:{eval_at_band}"
     ] = np.interp(
         G["appR"][f"{eval_at_R}:{eval_at_band}"],
         G["M2L_prof"][f"{eval_in_band}|{eval_at_colour1}:{eval_at_colour2}"]["R"],
@@ -842,9 +869,6 @@ def Calc_Stellar_Mass_Profile(
     if "distance" in G:
         G["Mstar_prof"]["Mstar"] = np.mean(mass_estimates, axis=1)
         G["Mstar_prof"]["Mstar_e"] = np.std(mass_estimates, axis=1)
-        RI_estimates = list(G["M2L_prof"][f"{b}|{c1}:{c2}"]["M2L_RI"]*G['L'][f"{b}|RI:r"] for b, c1, c2 in zip(eval_in_bands, eval_in_colours1, eval_in_colours2))
-        G["Mstar_prof"]['Mstar_RI'] = np.mean(RI_estimates)
-        G["Mstar_prof"]['Mstar_RI_e'] = np.std(RI_estimates)
     G["Mstar_prof"]["MstarDens"] = np.mean(mass_dens_estimates, axis=1)
     G["Mstar_prof"]["MstarDens_e"] = np.std(mass_dens_estimates, axis=1)
 
@@ -856,8 +880,17 @@ def Calc_Stellar_Mass_Profile(
 def Calc_Stellar_Mass(G, eval_at_R=None, eval_at_band=None):
 
     if eval_at_R == 'RI':
-        G["Mstar"][f"{eval_at_R}:{eval_at_band}"] = G["Mstar_prof"]['Mstar_RI']
-        G["Mstar"][f"E|{eval_at_R}:{eval_at_band}"] = G["Mstar_prof"]['Mstar_RI_e']
+        mstarest = []
+        m2lkeys = []
+        for m2lkey in G['M2L_in']:
+            if 'E|' in m2lkey or not f"{eval_at_R}:{eval_at_band}" in m2lkey:
+                continue
+            m2lkeys.append(m2lkey)
+            m2lbands = m2lkey[:m2lkey.find('|')].split(':')
+            mest = G['L'][f"{m2lbands[0]}|{eval_at_R}:{eval_at_band}"] * G['M2L_in'][m2lkey]
+            mstarest.append(mest)
+        G["Mstar"][f"{eval_at_R}:{eval_at_band}"] = np.mean(mstarest)
+        G["Mstar"][f"E|{eval_at_R}:{eval_at_band}"] = np.std(mstarest)
         return G
     
     G["Mstar"][f"{eval_at_R}:{eval_at_band}"] = np.interp(
@@ -874,25 +907,24 @@ def Calc_Stellar_Mass(G, eval_at_R=None, eval_at_band=None):
     return G
 
 
-@catch_errors
-def Calc_Stellar_Mass_Density_Radius(G, eval_at_R="Rd1", eval_at_tracer="*"):
-    """
-    calculates the radius at which a certain stellar mass density is reached
+# @catch_errors
+# def Calc_Stellar_Mass_Density_Radius(G, eval_at_R="Rd1", eval_at_tracer="*"):
+#     """
+#     calculates the radius at which a certain stellar mass density is reached
 
-    references: Calc_Stellar_Mass_Profile
-    """
+#     references: Calc_Stellar_Mass_Profile
+#     """
+#     R = Isophotal_Radius(
+#         G["Mstar_prof"]["R"],
+#         -np.log10(G["Mstar_prof"]["MstarDens"]),
+#         -np.log10(float(eval_at_R[2:])),
+#         E=G["Mstar_prof"]["MstarDens_e"] / (np.log(10) * G["Mstar_prof"]["MstarDens"]),
+#     )
 
-    R = Isophotal_Radius(
-        G["Mstar_prof"]["R"],
-        -np.log10(G["Mstar_prof"]["MstarDens"]),
-        -np.log10(float(eval_at_R[2:])),
-        E=G["Mstar_prof"]["MstarDens_e"] / (np.log(10) * G["Mstar_prof"]["MstarDens"]),
-    )
+#     G["appR"][f"{eval_at_R}:{eval_at_tracer}"] = R[0]
+#     G["appR"][f"E|{eval_at_R}:{eval_at_tracer}"] = R[1]
 
-    G["appR"][f"{eval_at_R}:{eval_at_tracer}"] = R[0]
-    G["appR"][f"E|{eval_at_R}:{eval_at_tracer}"] = R[1]
-
-    return G
+#     return G
 
 
 @catch_errors

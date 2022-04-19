@@ -166,9 +166,13 @@ def ConvertHubbleType(HT, HT_type = None):
         return 12
         
 
-allradii = list(f"Ri{rr:g}" for rr in np.arange(22, 26.5, 0.5)) + list(
-    f"Rp{rr:g}" for rr in np.arange(20, 90, 10)
-) + list(f"Re{rr:g}" for rr in np.arange(1.5, 4.5, 0.5)) + ['RI']
+allradii = list(f"Ri{rr:g}" for rr in np.arange(22, 26.5, 0.5)) + \
+           list(f"Rp{rr:g}" for rr in np.arange(20, 90, 10)) + \
+           list(f"Re{rr:g}" for rr in np.arange(1.5, 4.5, 0.5)) + \
+           ['RI']
+specialradii = list((f"R*{rr:g}", "*") for rr in np.arange(20, 90, 10)) +\
+               list((f"Rd{rr:g}",'*') for rr in [500,100,50,10,5,1]) +\
+               [('Rlast', 'rc')]
     
 def mag_to_L(mag, band, mage = None, zeropoint = None):
     """
@@ -742,7 +746,7 @@ def Get_M2L(colour, colour_type, M2L_colour, table = 'Roediger_BC03', sim = Fals
             T = Zhang_BC03_FullSampleAvar
     elif table == 'Cluver_2014':
         T = Cluver_2014
-        colour = np.clip(colour, a_min = -0.05, a_max = 0.2)
+        colour = np.clip(colour + 0.65, a_min = -0.1, a_max = 0.2)#fixme convert Vega/AB  #np.clip(colour, a_min = -0.05, a_max = 0.2)
     else:
         raise ValueError('unrecognized table: ', table)
             

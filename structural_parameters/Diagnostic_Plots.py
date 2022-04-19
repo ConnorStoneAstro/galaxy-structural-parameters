@@ -3,7 +3,7 @@ from matplotlib import colors as mcolors
 import numpy as np
 from .Profile_Functions import (
     Courteau97_Model_Evaluate,
-    Tan_Model_Evaluate,    
+    Tanh_Model_Evaluate,    
 )
 from .Decorators import catch_errors, all_bands
 
@@ -29,7 +29,7 @@ def Plot_Photometry(G):
         saveto = G['plot']['saveto']
     else:
         saveto = ''
-    plt.savefig(f"{saveto}Plot_Plotometry_SB_{G['name']}.jpg")
+    plt.savefig(f"{saveto}Plot_Photometry_SB_{G['name']}.jpg")
     plt.close()
 
     for b in G["photometry"]:
@@ -43,12 +43,11 @@ def Plot_Photometry(G):
         saveto = G['plot']['saveto']
     else:
         saveto = ''
-    plt.savefig(f"{saveto}Plot_Plotometry_mag_{G['name']}.jpg")
+    plt.savefig(f"{saveto}Plot_Photometry_mag_{G['name']}.jpg")
     plt.close()
 
     return G
 
-@all_bands
 @catch_errors
 def Plot_Radii(G, eval_in_band = None):
 
@@ -56,7 +55,7 @@ def Plot_Radii(G, eval_in_band = None):
         return G
     
     clist = list(mcolors.TABLEAU_COLORS.values())
-    appRs = list(filter(lambda k: 'E|' not in k and 'RI' not in k, G['appR'].keys()))
+    appRs = list(filter(lambda k: 'E|' not in k and 'RI' not in k and 'Rlast' not in k, G['appR'].keys()))
     colour = band_colors[eval_in_band] if eval_in_band in band_colors else None
     plt.errorbar(G['photometry'][eval_in_band]['R'], G['photometry'][eval_in_band]['SB'], yerr = G['photometry'][eval_in_band]['SB_e'], color = colour, markersize = 6, marker = '.', linewidth = 0, elinewidth = 1, label = f'SB {eval_in_band}')
     cindex = 0
@@ -104,8 +103,8 @@ def Plot_Velocity(G):
 
     plt.errorbar(G['rotation curve']['R'], G['rotation curve']['V'], yerr = G['rotation curve']['V_e'], color = 'k', markersize = 7, marker = '.', linewidth = 0, elinewidth = 1, label = 'RC data')
     rr = np.linspace(min(G['rotation curve']['R']), max(G['rotation curve']['R']), 1000)
-    x = list(G['rc_model'][f"Tan:{p}"] for p in G['rc_model']['Tan:param order'])
-    plt.plot(rr, Tan_Model_Evaluate(x, rr), color = 'tan', label = 'Tan Model', linewidth = 2)
+    x = list(G['rc_model'][f"Tanh:{p}"] for p in G['rc_model']['Tanh:param order'])
+    plt.plot(rr, Tanh_Model_Evaluate(x, rr), color = 'tan', label = 'Tanh Model', linewidth = 2)
     x = list(G['rc_model'][f"C97:{p}"] for p in G['rc_model']['C97:param order'])
     plt.plot(rr, Courteau97_Model_Evaluate(x, rr), color = 'tab:red', label = 'C97 Model', linewidth = 2)
     plt.legend()

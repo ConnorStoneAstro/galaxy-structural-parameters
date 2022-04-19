@@ -41,7 +41,7 @@ def Evaluate_Surface_Brightness(R, SB, atR, E = None):
     """
 
     if hasattr(atR, '__len__'):
-        return list(map(Evaluate_Surface_Brightness, [R]*len(atR), [SB]*len(atR), atR, [E]*len(atR)))
+        return list(Evaluate_Surface_Brightness(R, SB, rr, E) for rr in atR)
 
     if len(R) < 5:
         if E is None:
@@ -209,15 +209,14 @@ def Isophotal_Radius(R, SB, mu_iso, E = None):
         else:
             return '-', '-', '-'
 
-    # select 5 points closest to the right SB
-    N = np.argsort(np.abs(SB - mu_iso))[:5]
+    # select 10 points closest to the right SB
+    N = np.argsort(np.abs(SB - mu_iso))[:10]
     N = N[np.argsort(R[N])]
     # CHOOSE = np.logical_and(SB > (mu_iso - 3.), SB < (mu_iso + 3.))
     # if np.sum(CHOOSE) < 3:
     #     CHOOSE = list(True for c in CHOOSE)
     p = np.polyfit(R[N], SB[N], 1)
     if p[0] < 0:
-        print('Odd, negative slope for SB prof linear fit')
         p = np.polyfit(R, SB, 1)
     R0 = min(abs((mu_iso - p[1]) / p[0]), 3*R[-1])
     Riso = np.exp(minimize(lambda r: (Evaluate_Surface_Brightness(R, SB, np.exp(r[0])) - mu_iso)**2, x0 = [np.log(min(abs(R0),R[-1]))], method = 'Nelder-Mead').x[0])

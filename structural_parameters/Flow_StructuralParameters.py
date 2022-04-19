@@ -4,6 +4,7 @@ from .StructuralParameters import *
 from .Corrections import (
     Apply_Cosmological_Dimming,
     Apply_Extinction_Correction,
+    Apply_K_Correction,
     Apply_Profile_Truncation,
     Apply_Redshift_Velocity_Correction,
     Apply_Inclination_Correction,
@@ -14,7 +15,7 @@ from .Diagnostic_Plots import (
     Plot_Radii,
     Plot_Velocity,
 )
-from .Supporting_Functions import allradii
+from .Supporting_Functions import allradii, specialradii
 from functools import partial
 from collections import defaultdict
 import numpy as np
@@ -48,6 +49,9 @@ def Build_Inclination_Correction_Prep(eval_after_R = None, eval_after_band = Non
         "extinction correction", Apply_Extinction_Correction
     )
     Photometry_Corrections.add_process_node(
+        "k correction", Apply_K_Correction
+    )
+    Photometry_Corrections.add_process_node(
         "profile truncation", Apply_Profile_Truncation
     )    
     Photometry_Corrections.linear_mode(False)
@@ -73,11 +77,11 @@ def Build_Inclination_Correction_Prep(eval_after_R = None, eval_after_band = Non
 def Build_Structural_Parameters_Flowchart(
         primary_band = 'r',
         eval_at_radii = allradii,
+        eval_at_specialradii = specialradii,
         eval_at_bands = ['r'],
         colours = [("f", "n"), ("g", "r"), ("g", "z"), ("r", "z"), ("w1", "w2")],
         concentrations = [("Rp20", "Rp80"), ("Ri22", "Ri26"), ("Ri23.5", "Ri26")],
         stellarmass_bands = [('r', 'g', 'z', 'w1'), ('g', 'g', 'r', 'w1'), ('r', 'z', 'z', 'w2')],
-        eval_at_density_radii = ["Rd500", "Rd100", "Rd50", "Rd10", "Rd5", "Rd1"],
         incl_corr_specification = None):
     
     # Structural Parameters Flowchart
@@ -92,6 +96,16 @@ def Build_Structural_Parameters_Flowchart(
     # Inclination
     Structural_Parameters.add_process_node("inclination profile", partial(Calc_Inclination_Profile, eval_in_band = primary_band))
     
+    # Colour Profiles
+    Pre_Colour_Profiles = flow.Chart("pre colour profiles")
+    Pre_Colour_Profiles.linear_mode(True)
+    for eb1, eb2 in colours:
+        Pre_Colour_Profiles.add_process_node(
+            f"colour profile:{eb1}:{eb2}",
+            partial(Calc_Colour_Profile, eval_in_colour1=eb1, eval_in_colour2=eb2),
+        )
+    Pre_Colour_Profiles.linear_mode(False)
+    
     # Apply corrections to photometry
     ######################################################################
     Photometry_Corrections = flow.Chart("photometry corrections")
@@ -101,6 +115,10 @@ def Build_Structural_Parameters_Flowchart(
     )
     Photometry_Corrections.add_process_node(
         "extinction correction", Apply_Extinction_Correction
+    )
+    Photometry_Corrections.add_node(Pre_Colour_Profiles)
+    Photometry_Corrections.add_process_node(
+        "k correction", Apply_K_Correction
     )
     Photometry_Corrections.add_process_node(
         "profile truncation", Apply_Profile_Truncation
@@ -114,19 +132,6 @@ def Build_Structural_Parameters_Flowchart(
 
     # Individual Structural Parameters
     ######################################################################
-    # Apparent Radius
-    Apparent_Radius = flow.Chart("apparent radius")
-    Apparent_Radius.linear_mode(True)
-    for er in eval_at_radii:
-        for eb in eval_at_bands:
-            Apparent_Radius.add_process_node(
-                f"apparent radius:{er}:{eb}",
-                partial(Calc_Apparent_Radius, eval_at_R=er, eval_at_band=eb),
-            )
-    Apparent_Radius.linear_mode(False)
-    Structural_Parameters.add_node(Apparent_Radius)
-    Structural_Parameters.add_process_node('plot radii', Plot_Radii)
-
     # Colour Profiles
     Colour_Profiles = flow.Chart("colour profiles")
     Colour_Profiles.linear_mode(True)
@@ -135,21 +140,21 @@ def Build_Structural_Parameters_Flowchart(
             f"colour profile:{eb1}:{eb2}",
             partial(Calc_Colour_Profile, eval_in_colour1=eb1, eval_in_colour2=eb2),
         )
-    Colour_Profiles.linear_mode(False)
+    Colour_Profiles.linear_mode(False)    
     Structural_Parameters.add_node(Colour_Profiles)
 
     # Mass to Light profiles
-    Mass_to_Light = flow.Chart("mass to light")
-    Mass_to_Light.linear_mode(True)
+    Mass_to_Light_Profile = flow.Chart("mass to light profiles")
+    Mass_to_Light_Profile.linear_mode(True)
     for b, c1, c2 in zip(*stellarmass_bands):
-        Mass_to_Light.add_process_node(
+        Mass_to_Light_Profile.add_process_node(
             f"mass to light profile:{b}:{c1}:{c2}",
             partial(
                 Calc_Mass_to_Light_Profile, eval_in_band = b, eval_in_colour1=c1, eval_in_colour2=c2
             ),
         )
-    Mass_to_Light.linear_mode(False)
-    Structural_Parameters.add_node(Mass_to_Light)
+    Mass_to_Light_Profile.linear_mode(False)
+    Structural_Parameters.add_node(Mass_to_Light_Profile)
 
     # Stellar Mass profile
     Structural_Parameters.add_process_node("stellar mass profile", partial(
@@ -159,16 +164,32 @@ def Build_Structural_Parameters_Flowchart(
         eval_in_colours2 = stellarmass_bands[2],
     ))
 
-    # Stellar Mass Density Radius
-    StellarDensity_Radius = flow.Chart("stellar density radius")
-    StellarDensity_Radius.linear_mode(True)
-    for er in eval_at_density_radii:
-        StellarDensity_Radius.add_process_node(
-            f"apparent density radius:{er}",
-            partial(Calc_Stellar_Mass_Density_Radius, eval_at_R=er),
-        )
-    StellarDensity_Radius.linear_mode(False)
-    Structural_Parameters.add_node(StellarDensity_Radius)
+    # Apparent Radius
+    Apparent_Radius = flow.Chart("apparent radius")
+    Apparent_Radius.linear_mode(True)
+    for er in eval_at_radii:
+        for eb in eval_at_bands:
+            Apparent_Radius.add_process_node(
+                f"apparent radius:{er}:{eb}",
+                partial(Calc_Apparent_Radius, eval_at_R=er, eval_at_tracer=eb),
+            )
+    for er, eb in eval_at_specialradii:
+        Apparent_Radius.add_process_node(
+            f"apparent radius:{er}:{eb}",
+            partial(Calc_Apparent_Radius, eval_at_R=er, eval_at_tracer=eb),
+        )        
+    Apparent_Radius.linear_mode(False)
+    Structural_Parameters.add_node(Apparent_Radius)
+    Structural_Parameters.add_process_node('plot radii', partial(Plot_Radii, eval_in_band = primary_band))
+
+    # Axis Ratio
+    Structural_Parameters.add_process_node("axis ratio", partial(Calc_Axis_Ratio, eval_in_band = primary_band))
+
+    # Inclination
+    Structural_Parameters.add_process_node("inclination", partial(Calc_Inclination, eval_in_band = primary_band))
+
+    # Apparent Magnitude
+    Structural_Parameters.add_process_node("apparent magnitude", Calc_Apparent_Magnitude)
 
     # Colours
     Colour = flow.Chart("colour")
@@ -184,13 +205,26 @@ def Build_Structural_Parameters_Flowchart(
         )
     Colour.linear_mode(False)
     Structural_Parameters.add_node(Colour)
+
+    # Mass to Light
+    Mass_to_Light = flow.Chart("mass to light")
+    Mass_to_Light.linear_mode(True)
+    for b, c1, c2 in zip(*stellarmass_bands):
+        Mass_to_Light.add_process_node(
+            f"mass to light in:{b}:{c1}:{c2}",
+            partial(
+                Calc_Mass_to_Light_within, eval_in_band = b, eval_at_colour1=c1, eval_at_colour2=c2
+            ),
+        )
+        Mass_to_Light.add_process_node(
+            f"mass to light at:{b}:{c1}:{c2}",
+            partial(
+                Calc_Mass_to_Light_at, eval_in_band = b, eval_at_colour1=c1, eval_at_colour2=c2
+            ),
+        )
+    Mass_to_Light.linear_mode(False)
+    Structural_Parameters.add_node(Mass_to_Light)    
     
-    # Axis Ratio
-    Structural_Parameters.add_process_node("axis ratio", partial(Calc_Axis_Ratio, eval_in_band = primary_band))
-
-    # Inclination
-    Structural_Parameters.add_process_node("inclination", partial(Calc_Inclination, eval_in_band = primary_band))
-
     # Concentration
     Concentration = flow.Chart("concentration")
     Concentration.linear_mode(True)
@@ -204,9 +238,6 @@ def Build_Structural_Parameters_Flowchart(
             )
     Concentration.linear_mode(False)
     Structural_Parameters.add_node(Concentration)
-
-    # Apparent Magnitude
-    Structural_Parameters.add_process_node("apparent magnitude", Calc_Apparent_Magnitude)
 
     # Surface Density
     Structural_Parameters.add_process_node("surface density in", Calc_Surface_Density_within)
@@ -231,7 +262,7 @@ def Build_Structural_Parameters_Flowchart(
     Velocity_Fit = flow.Chart("velocity fits")
     Velocity_Fit.linear_mode(True)
     Velocity_Fit.add_process_node('fit C97 model', Calc_C97_Velocity_Fit)
-    Velocity_Fit.add_process_node('fit Tan model', Calc_Tan_Velocity_Fit)
+    # Velocity_Fit.add_process_node('fit Tan model', Calc_Tan_Velocity_Fit)
     Velocity_Fit.add_process_node('fit Tanh model', Calc_Tanh_Velocity_Fit)
     Velocity_Fit.linear_mode(False)
     Structural_Parameters.add_node(Velocity_Fit)
@@ -241,7 +272,7 @@ def Build_Structural_Parameters_Flowchart(
     Velocity = flow.Chart("velocity")
     Velocity.linear_mode(True)
     Velocity.add_process_node(f"velocity:C97", partial(Calc_Velocity, eval_with_model='C97'))
-    Velocity.add_process_node(f"velocity:Tan", partial(Calc_Velocity, eval_with_model='Tan'))
+    # Velocity.add_process_node(f"velocity:Tan", partial(Calc_Velocity, eval_with_model='Tan'))
     Velocity.add_process_node(f"velocity:Tanh", partial(Calc_Velocity, eval_with_model='Tanh'))
     Velocity.linear_mode(False)
     Structural_Parameters.add_node(Velocity)
@@ -254,6 +285,9 @@ def Build_Structural_Parameters_Flowchart(
 
     # Absolute Magnitude
     Structural_Parameters.add_process_node("absolute magnitude", Calc_Absolute_Magnitude)
+
+    # Luminosity
+    Structural_Parameters.add_process_node("luminosity", Calc_Luminosity)
 
     # Stellar Mass
     Structural_Parameters.add_process_node("stellar mass", Calc_Stellar_Mass)    
@@ -270,24 +304,9 @@ def Build_Structural_Parameters_Flowchart(
     # Structural_Parameters.add_process_node("stellar angular momentum profile", partial(Calc_Stellar_Angular_Momentum_Profile, eval_in_band = primary_band))
     # Structural_Parameters.add_process_node("stellar angular momentum", Calc_Stellar_Angular_Momentum)
     
-    # Luminosity
-    Structural_Parameters.add_process_node("luminosity", Calc_Luminosity)
-
     # Close flowchart construction
     ######################################################################
     Structural_Parameters.linear_mode(False)
-
-    # # Pipeline Decisions
-    # ######################################################################
-    # # velocity bypass
-    # Structural_Parameters.add_decision_node('bypass velocity', partial(Decide_Bypass, check_key = "rotation curve"))
-    # Structural_Parameters.insert_node('bypass velocity', "velocity corrections")
-    # Structural_Parameters.link_nodes('bypass velocity', Velocity.forward.name)
-
-    # # Absolute quantities bypass
-    # Structural_Parameters.add_decision_node('bypass distance dependent', partial(Decide_Bypass, check_key = "distance"))
-    # Structural_Parameters.insert_node('bypass distance dependent', "physical radius")
-    # Structural_Parameters.link_nodes('bypass distance dependent', Structural_Parameters.nodes['luminosity'].forward.name)
 
     ######################################################################
     # Structural_Parameters.draw("plots/Structural_Parameters_Flowchart.png")

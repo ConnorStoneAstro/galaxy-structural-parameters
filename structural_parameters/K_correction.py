@@ -1,3 +1,16 @@
+import pandas as pd
+import numpy as np
+
+def wise_kcor(filter_name, redshift):
+    T = pd.read_table(
+        '/home/connor/Programming/StructuralParameters/structural_parameters/Sc.Kcorrection.tbl',
+        skiprows = 35,
+        delim_whitespace = True
+    )
+    f = np.interp(redshift, T['z'], T[f"f{filter_name}"])
+    
+    return -2.5*np.log10(f)
+
 def calc_kcor(filter_name, redshift, colour_name, colour_value):
     """
     K-corrections calculator in Python. See http://kcor.sai.msu.ru for the 

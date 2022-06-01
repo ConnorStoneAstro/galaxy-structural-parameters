@@ -1,5 +1,8 @@
 import functools
 
+class okPROBESerror(Exception):
+    pass
+
 def catch_errors(func):
     @functools.wraps(func)
     def wrapper_catch_errors(G, *args, **kwargs):
@@ -9,6 +12,11 @@ def catch_errors(func):
             if 'warnings' in G:
                 G['warnings'].append(e)
             return G
+        except okPROBESerror as e:
+            if 'warnings' in G:
+                G['warnings'].append(e)
+            return G
+            
     return wrapper_catch_errors
 
 def all_appR(func):

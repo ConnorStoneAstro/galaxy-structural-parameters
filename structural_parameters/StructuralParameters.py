@@ -39,7 +39,7 @@ from .Profile_Functions import (
     Tanh_Model_Evaluate,
     Tanh_Model_Fit,
 )
-from .Decorators import catch_errors, all_appR, all_bands
+from .Decorators import catch_errors, all_appR, all_bands, okPROBESerror
 from .K_correction import calc_kcor
 from scipy.integrate import quad, trapz
 import matplotlib.pyplot as plt
@@ -54,7 +54,6 @@ def Calc_Apparent_Radius(G, eval_at_R="Ri23.5", eval_at_tracer="r"):
 
     references: None
     """
-    
     if eval_at_R == "RI":
         Reval = [np.inf, 0.0]
     elif eval_at_R == "Rlast" and eval_at_tracer == 'rc':
@@ -113,6 +112,16 @@ def Calc_Apparent_Radius(G, eval_at_R="Ri23.5", eval_at_tracer="r"):
     else:
         raise ValueError(f"unrecognized evaluation radius: {eval_at_R}")
 
+    if eval_at_tracer in G["photometry"]:
+        if Reval[0] <= max(0,G["photometry"][eval_at_tracer]["R"][1]):
+            raise okPROBESerror(f"apparent radius at zero for {eval_at_R} in {eval_at_tracer}")
+    elif eval_at_tracer == "*":
+        if Reval[0] <= max(0, G["Mstar_prof"]["R"][1]):
+            raise okPROBESerror(f"apparent radius at zero for {eval_at_R} in {eval_at_tracer}")
+    elif eval_at_tracer == "rc":
+        if Reval[0] <= np.min(np.abs(G['rotation curve']['R'])):
+            raise okPROBESerror(f"apparent radius at zero for {eval_at_R} in {eval_at_tracer}")
+    
     G["appR"][f"{eval_at_R}:{eval_at_tracer}"] = Reval[0]
     G["appR"][f"E|{eval_at_R}:{eval_at_tracer}"] = Reval[1]
     return G
@@ -416,6 +425,9 @@ def Calc_Apparent_Magnitude(G, eval_in_band=None, eval_at_R=None, eval_at_band=N
     # add extrapolation if integrating to infinity
     if to_inf:
         infCHOOSE = sbR > G['appR'][f"Rp60:{eval_at_band}"]
+        if np.sum(infCHOOSE) < 3:
+            r60 = G['appR'][f"Rp60:{eval_at_band}"]
+            raise okPROBESerror(f"{eval_in_band}-band SB profile doesnt go far enough for inf mag. Gets to {sbR[-1]}, however R60 is {r60}")
         p = np.polyfit(
             sbR[infCHOOSE],
             sbSB[infCHOOSE],

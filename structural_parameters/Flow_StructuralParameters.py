@@ -28,15 +28,33 @@ def to_defaultdict(G):
     newG.update(G)
     return newG
     
-def Build_Inclination_Correction_Prep(eval_after_R = None, eval_after_band = None):
+def Build_Inclination_Correction_Prep(
+        primary_band = 'r',
+        eval_after_R = None,
+        eval_after_band = None,
+        colours = [("f", "n"), ("n", "g"), ("g", "r"), ("g", "z"), ("r", "z"), ("w1", "w2")],
+):
     # Structural Parameters Flowchart
     ######################################################################
     Incl_Prep = flow.Chart("inclination preparation", logfile = 'structural_parameters.log')
     Incl_Prep.linear_mode(True)
-
+    
     # Convert to defaultdict
     ######################################################################
     Incl_Prep.add_process_node("prime galaxy dict", to_defaultdict)
+    
+    # Inclination
+    Incl_Prep.add_process_node("inclination profile", partial(Calc_Inclination_Profile, eval_in_band = primary_band))
+    
+    # Colour Profiles
+    Pre_Colour_Profiles = flow.Chart("pre colour profiles")
+    Pre_Colour_Profiles.linear_mode(True)
+    for eb1, eb2 in colours:
+        Pre_Colour_Profiles.add_process_node(
+            f"colour profile:{eb1}:{eb2}",
+            partial(Calc_Colour_Profile, eval_in_colour1=eb1, eval_in_colour2=eb2),
+        )
+    Pre_Colour_Profiles.linear_mode(False)
     
     # Apply corrections to photometry
     ######################################################################
@@ -48,6 +66,7 @@ def Build_Inclination_Correction_Prep(eval_after_R = None, eval_after_band = Non
     Photometry_Corrections.add_process_node(
         "extinction correction", Apply_Extinction_Correction
     )
+    Photometry_Corrections.add_node(Pre_Colour_Profiles)
     Photometry_Corrections.add_process_node(
         "k correction", Apply_K_Correction
     )
@@ -56,17 +75,14 @@ def Build_Inclination_Correction_Prep(eval_after_R = None, eval_after_band = Non
     )    
     Photometry_Corrections.linear_mode(False)
     Incl_Prep.add_node(Photometry_Corrections)
-
+    
     # Individual Structural Parameters
     ######################################################################
     # Apparent Radius
     Incl_Prep.add_process_node(
         "reference radius",
-        partial(Calc_Apparent_Radius, eval_at_R=eval_after_R, eval_at_band=eval_after_band),
+        partial(Calc_Apparent_Radius, eval_at_R=eval_after_R, eval_at_tracer=eval_after_band),
     )
-
-    # Inclination
-    Incl_Prep.add_process_node("inclination", partial(Calc_Inclination_Profile, eval_in_band = eval_after_band))
 
     # Close flowchart construction
     ######################################################################
@@ -79,10 +95,11 @@ def Build_Structural_Parameters_Flowchart(
         eval_at_radii = allradii,
         eval_at_specialradii = specialradii,
         eval_at_bands = ['r'],
-        colours = [("f", "n"), ("g", "r"), ("g", "z"), ("r", "z"), ("w1", "w2")],
+        colours = [("f", "n"), ("n", "g"), ("g", "r"), ("g", "z"), ("r", "z"), ("w1", "w2")],
         concentrations = [("Rp20", "Rp80"), ("Ri22", "Ri26"), ("Ri23.5", "Ri26")],
         stellarmass_bands = [('r', 'g', 'z', 'w1'), ('g', 'g', 'r', 'w1'), ('r', 'z', 'z', 'w2')],
-        incl_corr_specification = None):
+        incl_corr_specification = None
+):
     
     # Structural Parameters Flowchart
     ######################################################################

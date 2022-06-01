@@ -4,11 +4,10 @@ from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from .Supporting_Functions import v_to_z, mag_to_flux, flux_to_mag, fluxdens_to_fluxsum
 from .Decorators import catch_errors, all_bands
-from .K_correction import calc_kcor
+from .K_correction import calc_kcor, wise_kcor
 
 @catch_errors
 def Apply_Cosmological_Dimming(G):
-
     if not "redshift helio" in G:
         if "warnings" in G:
             G["warnings"].append(
@@ -27,7 +26,6 @@ def Apply_Cosmological_Dimming(G):
 @all_bands
 @catch_errors
 def Apply_Extinction_Correction(G, eval_in_band = None):
-
     if not "extinction" in G or not eval_in_band in G["extinction"]:
         if "warnings" in G:
             G["warnings"].append(
@@ -55,58 +53,34 @@ def Apply_K_Correction(G, eval_in_band = None):
             )
         return G
     # SB profile correction
-    try:
-        if eval_in_band in ['g', 'r', 'z']:
+    bandnames = {'f': 'FUV', 'n': 'NUV', 'g': 'g', 'r': 'r', 'z': 'z', 'w1': 'W1', 'w2': 'W2'}
+    matchcolours = {'f': ('f','n'), 'n': ('n', 'g'), 'g': ('g', 'z'), 'r': ('g', 'r'), 'z': ('r', 'z'), 'w1': ('w1', 'w2'), 'w2': ('w1', 'w2')}
+    for mode in [('col', 'SB'), ('totcol', 'totmag')]:
+        if eval_in_band in ['f', 'n', 'g', 'r', 'z']:
             kcorr = list(
                 calc_kcor(
-                    eval_in_band,
+                    bandnames[eval_in_band],
                     v_to_z(G["redshift_helio"]),
-                    "g - z",
+                    f"{bandnames[matchcolours[eval_in_band][0]]} - {bandnames[matchcolours[eval_in_band][1]]}",
                     c,
                 )
                 for c in np.interp(
                         G["photometry"][eval_in_band]["R"],
-                        G["Col_prof"]["g:z"]["R"],
-                        np.clip(G["Col_prof"]["g:z"]["col"], a_min = -2, a_max = 3),
+                        G["Col_prof"][f"{matchcolours[eval_in_band][0]}:{matchcolours[eval_in_band][1]}"]["R"],
+                        np.clip(G["Col_prof"][f"{matchcolours[eval_in_band][0]}:{matchcolours[eval_in_band][1]}"][mode[0]], a_min = -2, a_max = 3),
                 )
             )
+        elif eval_in_band in ['w1', 'w2']:
+            kcorr = -np.ones(len(G["photometry"][eval_in_band]["R"])) * wise_kcor(bandnames[eval_in_band], v_to_z(G["redshift_helio"]))
         else:
             return G
-        G["photometry"][eval_in_band]["SB"] -= np.array(kcorr)
-    except Exception as e:
-        if "warnings" in G:
-            G["warnings"].append(
-                f"Could not apply K-correction to {eval_in_band}-band SB profile"
-            )
-
-    # Curve of Growth correction
-    try:
-        kcorr = list(
-            calc_kcor(
-                eval_in_band,
-                v_to_z(G["redshift_helio"]),
-                "g - z",
-                c,
-            )
-            for c in np.interp(
-                G["photometry"][eval_in_band]["R"],
-                G["Col_prof"]["g:z"]["R"],
-                G["Col_prof"]["g:z"]["totcol"],
-            )
-        )
-        G["photometry"][eval_in_band]["totmag"] -= np.array(kcorr)
-    except Exception:
-        if "warnings" in G:
-            G["warnings"].append(
-                f"Could not apply K-correction to {eval_in_band}-band Curve of Growth"
-            )
+        G["photometry"][eval_in_band][mode[1]] -= np.array(kcorr)
 
     return G
 
 @all_bands
 @catch_errors
 def Apply_Profile_Truncation(G, eval_in_band):
-
     # SB error limits for the different bands
     if eval_in_band in ['f', 'n']:
         lim = 0.5
@@ -124,33 +98,77 @@ def Apply_Profile_Truncation(G, eval_in_band):
         raise KeyError(f'Low quality profile, cannot determine viable region for {eval_in_band}, kicking')
     truncR = G["photometry"][eval_in_band]["R"][-1] * 1.01
 
-    outer_CHOOSE = [0]
-    inner_zone = 5
-    while np.sum(outer_CHOOSE) < 5 and inner_zone > 1:
-        Rstart = Isophotal_Radius(
-            G["photometry"][eval_in_band]["R"][CHOOSE],
-            G["photometry"][eval_in_band]["SB"][CHOOSE],
-            G["photometry"][eval_in_band]["SB"][CHOOSE][0] + inner_zone,
-        )[0]
-        outer_CHOOSE = np.logical_and(CHOOSE, G["photometry"][eval_in_band]["R"] > Rstart)
-        inner_zone -= 1
-    if eval_in_band not in ['g', 'r', 'z']: #inner_zone <= 1 or np.sum(outer_CHOOSE) < 15:
+    # outer_CHOOSE = [0]
+    # inner_zone = 6
+    # while np.sum(outer_CHOOSE) < 5 and inner_zone > 1:
+    #     Rstart = Isophotal_Radius(
+    #         G["photometry"][eval_in_band]["R"][CHOOSE],
+    #         G["photometry"][eval_in_band]["SB"][CHOOSE],
+    #         G["photometry"][eval_in_band]["SB"][CHOOSE][0] + inner_zone,
+    #     )[0]
+    #     outer_CHOOSE = np.logical_and(CHOOSE, G["photometry"][eval_in_band]["R"] > Rstart)
+    #     inner_zone -= 1
+    # if eval_in_band not in ['g', 'r', 'z']: #inner_zone <= 1 or np.sum(outer_CHOOSE) < 15:
+    #     outer_CHOOSE = CHOOSE
+    Rstart = Isophotal_Radius(
+        G["photometry"][eval_in_band]["R"][CHOOSE],
+        G["photometry"][eval_in_band]["SB"][CHOOSE],
+        G["photometry"][eval_in_band]["SB"][CHOOSE][0] + 1,
+    )[0]
+    if eval_in_band in ['f', 'n']:
         outer_CHOOSE = CHOOSE
+        Rstart = G["photometry"][eval_in_band]["R"][CHOOSE][1]
+    else:
+        outer_CHOOSE = np.logical_and(CHOOSE, G["photometry"][eval_in_band]["R"] > Rstart)
 
     # If all the data is very low S/N, kick out the profile
-    if np.all(G["photometry"][eval_in_band]["SB"] > 27):
+    if np.all(G["photometry"][eval_in_band]["SB"] > 27) or np.sum(outer_CHOOSE) < 5:
         del G['photometry'][eval_in_band]
         raise KeyError(f'Low quality profile, cannot determine viable region for {eval_in_band}, kicking')
 
     # Basic linear floor model
-    def linear_floor(x, R, SB):
+    def linear_floor(x, R, SB, E):
         return np.mean(
-            np.abs(SB - np.clip(x[0] * R + x[1], a_min=None, a_max=x[2]))
+            np.abs(SB - np.clip(x[0] * R + x[1], a_min=None, a_max=x[2])) / E
         )
 
     # Try to fit the linear floor model, using every point in the profile as a starting point
     # Select the best fit out of all of them
     best_res = None
+    # for i in range(2,np.sum(outer_CHOOSE)-1):
+    #     x0 = list(
+    #         np.polyfit(G["photometry"][eval_in_band]["R"][outer_CHOOSE][:i],
+    #                    G["photometry"][eval_in_band]["SB"][outer_CHOOSE][:i],
+    #                    1
+    #         )
+    #     ) + [np.median(G["photometry"][eval_in_band]["SB"][outer_CHOOSE][i:])]
+    #     res = minimize(
+    #         linear_floor,
+    #         x0=x0,
+    #         args=(
+    #             G["photometry"][eval_in_band]["R"][outer_CHOOSE],
+    #             G["photometry"][eval_in_band]["SB"][outer_CHOOSE],
+    #             np.exp((G["photometry"][eval_in_band]["SB"][outer_CHOOSE]-27)/2.5),
+    #         ),
+    #         method="Nelder-Mead",
+    #     )
+    #     if best_res is None:
+    #         best_res = res
+    #     elif res.success and best_res.fun > res.fun:
+    #         best_res = res
+    # If the best fitting results converged, set them as the truncation radius
+    # Otherwise try to find a point where errors go too high
+    # if best_res.success:
+    #     truncR = (best_res.x[2] - best_res.x[1]) / best_res.x[0]
+    # else:
+    #     truncR = G["photometry"][eval_in_band]["R"][-1]
+    #     for i in range(
+    #             np.argmin(np.abs(G["photometry"][eval_in_band]["R"] - Rstart)), len(G["photometry"][eval_in_band]["R"])
+    #     ):
+    #         if G["photometry"][eval_in_band]["SB"][i] > 90 or G["photometry"][eval_in_band]["SB_e"][i] > lim:
+    #             truncR = G["photometry"][eval_in_band]["R"][i]
+    #             break
+    
     for i in range(2,np.sum(outer_CHOOSE)-1):
         x0 = list(
             np.polyfit(G["photometry"][eval_in_band]["R"][outer_CHOOSE][:i],
@@ -158,39 +176,40 @@ def Apply_Profile_Truncation(G, eval_in_band):
                        1
             )
         ) + [np.median(G["photometry"][eval_in_band]["SB"][outer_CHOOSE][i:])]
-        res = minimize(
-            linear_floor,
-            x0=x0,
-            args=(
-                G["photometry"][eval_in_band]["R"][outer_CHOOSE],
-                G["photometry"][eval_in_band]["SB"][outer_CHOOSE]
-            ),
-            method="Nelder-Mead",
+        res = linear_floor(x0,
+                           G["photometry"][eval_in_band]["R"][outer_CHOOSE],
+                           G["photometry"][eval_in_band]["SB"][outer_CHOOSE],
+                           np.ones(len(G["photometry"][eval_in_band]["SB"][outer_CHOOSE])),
         )
+        x0 = list(
+            np.polyfit(G["photometry"][eval_in_band]["R"][outer_CHOOSE][max(0,i-5):i],
+                       G["photometry"][eval_in_band]["SB"][outer_CHOOSE][max(0,i-5):i],
+                       1
+            )
+        ) + [np.median(G["photometry"][eval_in_band]["SB"][outer_CHOOSE][i:])]
         if best_res is None:
-            best_res = res
-        elif res.success and best_res.fun > res.fun:
-            best_res = res
+            best_res = [res, x0, G["photometry"][eval_in_band]["R"][outer_CHOOSE][i]]
+        elif best_res[0] > res:
+            best_res = [res, x0, G["photometry"][eval_in_band]["R"][outer_CHOOSE][i]]
 
     # If the best fitting results converged, set them as the truncation radius
     # Otherwise try to find a point where errors go too high
-    if best_res.success:
-        truncR = (best_res.x[2] - best_res.x[1]) / best_res.x[0]
-    else:
-        truncR = G["photometry"][eval_in_band]["R"][-1]
+    truncR = (best_res[1][2] - best_res[1][1]) / best_res[1][0]
+    if eval_in_band in ['f', 'n']:
+        temp_truncR = G["photometry"][eval_in_band]["R"][-1]
         for i in range(
                 np.argmin(np.abs(G["photometry"][eval_in_band]["R"] - Rstart)), len(G["photometry"][eval_in_band]["R"])
         ):
             if G["photometry"][eval_in_band]["SB"][i] > 90 or G["photometry"][eval_in_band]["SB_e"][i] > lim:
-                truncR = G["photometry"][eval_in_band]["R"][i]
+                temp_truncR = G["photometry"][eval_in_band]["R"][i]*1.05
                 break
-
+        truncR = min(truncR, temp_truncR)
     # Apply the truncation, except for f,n bands which have too little S/N
     if not eval_in_band in ['f', 'n']:
         CHOOSE[G["photometry"][eval_in_band]["R"] > truncR] = False
     if np.sum(CHOOSE) < 5:
         CHOOSE = np.logical_and(G["photometry"][eval_in_band]["SB"] < 28, G["photometry"][eval_in_band]["SB_e"] < lim)
-
+        
     # Remove stragler points that are isolated in the profile outskirts
     for i in range(len(G["photometry"][eval_in_band]["R"])-2,5,-1):
         if CHOOSE[i] and not CHOOSE[i+1] and not CHOOSE[i-1]:
@@ -200,12 +219,10 @@ def Apply_Profile_Truncation(G, eval_in_band):
         raise KeyError(f'Low quality profile, cannot determine viable region for {eval_in_band}, kicking')
     for k in G["photometry"][eval_in_band]:
         G["photometry"][eval_in_band][k] = G["photometry"][eval_in_band][k][CHOOSE]
-
     return G
 
 @catch_errors
 def Apply_Redshift_Velocity_Correction(G):
-
     if not "redshift_helio" in G:
         if "warnings" in G:
             G["warnings"].append(
@@ -224,9 +241,10 @@ def Apply_Inclination_Correction(G, specification = None):
     if specification is None:
         return G
     for b in specification:
-        correction = specification[b]['alpha'] + specification[b]['gamma']*np.clip(-np.log10(np.cos(np.interp(G['photometry'][b]['R'], G['inclination_prof']['R'], G['inclination_prof']['inclination']))), a_min = 0, a_max = 1)
+        if b == 'w2': # skip w2, no correction needed
+            continue
+        correction = specification[b]['gamma']*np.clip(-np.log10(np.cos(np.interp(G['photometry'][b]['R'], G['inclination_prof']['R'], G['inclination_prof']['inclination']))), a_min = 0, a_max = 1)
         G['photometry'][b]['SB'] += correction        
-        pretot = G['photometry'][b]['totmag'] + 10
         G['photometry'][b]['totmag'] = flux_to_mag(
             fluxdens_to_fluxsum(
                 G['photometry'][b]['R'],
@@ -237,7 +255,7 @@ def Apply_Inclination_Correction(G, specification = None):
     return G
 
 
-def Fit_Inclination_Correction(Glist, fit_bands = ['f', 'n', 'g', 'r', 'z'], refband = 'w1', eval_after_R = None, eval_after_band = None):
+def Fit_Inclination_Correction(Glist, fit_bands = ['f', 'n', 'g', 'r', 'z', 'w2'], refband = 'w1', eval_after_R = None, eval_after_band = None):
 
     spec = dict((b,{}) for b in fit_bands)
     for b in fit_bands:
@@ -245,7 +263,7 @@ def Fit_Inclination_Correction(Glist, fit_bands = ['f', 'n', 'g', 'r', 'z'], ref
         all_col = []
         all_incl = []
         for G in Glist:
-            if G is None or b not in G['photometry']:
+            if G is None or b not in G['photometry'] or not 'w1' in G['photometry']:
                 continue
             if not eval_after_R is None:
                 CHOOSE = G['photometry'][b]['R'] > G['appR'][f"{eval_after_R}:{eval_after_band}"]
@@ -253,7 +271,7 @@ def Fit_Inclination_Correction(Glist, fit_bands = ['f', 'n', 'g', 'r', 'z'], ref
                 CHOOSE = np.ones(len(G['photometry'][b]['R']),dtype = bool)
             minr = min(G['photometry'][b]['R'][-1], G['photometry'][refband]['R'][-1])
             CHOOSE[G['photometry'][b]['R'] > minr] = False
-            if np.sum(CHOOSE) < 5 or len(G['photometry'][refband]['R']) < 5:
+            if np.sum(CHOOSE) < 2 or len(G['photometry'][refband]['R']) < 5:
                 continue
             all_col += list(
                 G['photometry'][b]['SB'][CHOOSE] - np.interp(
@@ -272,7 +290,7 @@ def Fit_Inclination_Correction(Glist, fit_bands = ['f', 'n', 'g', 'r', 'z'], ref
         lim = -np.log10(np.cos(80 * np.pi/180))
         p = np.polyfit(all_incl[all_incl < lim], all_col[all_incl < lim], 1)
 
-        spec[b]['alpha'] = 0
+        spec[b]['alpha'] = p[1]
         spec[b]['gamma'] = -p[0]
         
     return spec
